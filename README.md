@@ -4,8 +4,8 @@ Aplicação GTK4/libadwaita para gerar um relatório PDF por cliente. A janela r
 
 ## Instalar os pacotes
 
-- Debian/Ubuntu: `sudo apt install ./dist/wazuh-security-reports_0.3.1-1_all.deb`
-- Fedora/RHEL: `sudo dnf install ./dist/wazuh-security-reports-0.3.1-1.noarch.rpm`
+- Debian/Ubuntu: `sudo apt install ./dist/wazuh-security-reports_0.3.2-1_all.deb`
+- Fedora/RHEL: `sudo dnf install ./dist/wazuh-security-reports-0.3.2-1.noarch.rpm`
 
 O instalador coloca um lançador chamado **Relatórios de Segurança Wazuh** no menu de aplicativos, com ícone próprio. Os pacotes declaram as bibliotecas GTK4/libadwaita e PDF como dependências. O destino padrão dos relatórios é `~/Relatorios Wazuh`, que pode ser alterado na janela.
 
@@ -36,17 +36,19 @@ A opção **Validar certificado TLS** vem desligada para aceitar o certificado p
 
 ## Consulta e conteúdo
 
-O filtro de cliente é um `term` exato em `agent.labels.customer`; o período usa `timestamp` em intervalo semiaberto. O gráfico agrupa os dados por hora em 24h, por 6 horas em 7d e por dia em 30d. O relatório mostra total de alertas, nível 10 ou superior, falhas de autenticação, principais agentes e regras, tendência temporal e recomendações de triagem. Ele informa quando a contagem representa alertas e não incidentes únicos. Uma falha de consulta, timeout ou erro de shard impede a geração do PDF.
+O filtro de cliente é um `term` exato em `agent.labels.customer`; o período usa `timestamp` em intervalo semiaberto. O gráfico agrupa os dados por hora em 24h, por 6 horas em 7d e por dia em 30d. O relatório mostra total de alertas, alertas Altos e Críticos, falhas de autenticação, principais agentes e regras, tendência temporal e recomendações de triagem. Ele informa quando a contagem representa alertas e não incidentes únicos. Uma falha de consulta, timeout ou erro de shard impede a geração do PDF.
 
 O módulo `wazuh_report.py` contém a consulta e a renderização; `wazuh_security_app.py` contém a interface. O modelo editável está em `modelo_relatorio_seguranca.md`. O PDF gerado é salvo de forma atômica para evitar arquivos parciais.
 
 ## Leitura gerencial e técnica
 
-A distribuição por severidade usa a legenda: **Baixo (lv 0 a 6)**, **Médio (lv 7 a 11)**, **Alto (lv 12 a 14)** e **Crítico (lv 15)**. O recorte de nível 10+ para triagem inclui parte da faixa Média e as faixas Alta e Crítica.
+O indicador **EPS médio (alertas)** divide o total de alertas indexados pela duração efetiva entre início e fim da consulta em segundos. Representa a média de todo o período, incluindo intervalos sem alertas. A fonte consultada não inclui os eventos processados que não geraram alerta.
+
+A severidade é apresentada apenas como **Baixo**, **Médio**, **Alto** ou **Crítico**, sem divulgar os níveis numéricos no PDF ou no modelo. Os alertas Altos e Críticos orientam a triagem prioritária.
 
 O relatório e o modelo em PDF compartilham as descrições das seções. A apresentação contém seis partes: visão executiva, volume e severidade, ativos e regras, acessos e sinais para investigação, plano de ação e referência técnica. Cada seção explica o que é apresentado, sua utilidade e os cuidados de interpretação.
 
-Os indicadores incluem participação dos alertas de nível 10+, participação das falhas de autenticação, fontes observadas, média de alertas por hora, pico temporal e distribuição por nível. A consulta também solicita estimativa de agentes distintos, campos ausentes e primeiro/último alerta. Extrações antigas continuam aceitas e informam quando esses dados não foram coletados. Fontes observadas não medem cobertura sem inventário; participação de falhas no total de alertas não mede a taxa de falha das tentativas de autenticação.
+Os indicadores incluem participação dos alertas Altos e Críticos, participação das falhas de autenticação, fontes observadas, média de alertas por hora, pico temporal e distribuição por severidade. A consulta também solicita estimativa de agentes distintos, campos ausentes e primeiro/último alerta. Extrações antigas continuam aceitas e informam quando esses dados não foram coletados. Fontes observadas não medem cobertura sem inventário; participação de falhas no total de alertas não mede a taxa de falha das tentativas de autenticação.
 
 O plano de ação apresenta responsáveis sugeridos e resultados verificáveis. Prazos, estado, incidentes confirmados, impacto e SLA exigem dados de atendimento e validação humana. O relatório indica como incorporar comparação histórica, inventário/criticidade e indicadores de resposta sem inventar métricas indisponíveis.
 

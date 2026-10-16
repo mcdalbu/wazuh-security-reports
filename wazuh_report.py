@@ -40,7 +40,7 @@ PERIODS = {
     720: ("30 dias", "1d", "dia"),
 }
 SEVERITY_BANDS = ((0, 6, "Baixo"), (7, 11, "Médio"), (12, 14, "Alto"), (15, 15, "Crítico"))
-SEVERITY_LEGEND = "Legenda: lv 0 a 6 - Baixo; lv 7 a 11 - Médio; lv 12 a 14 - Alto; lv 15 - Crítico."
+SEVERITY_LEGEND = "Severidades: Baixo, Médio, Alto e Crítico."
 
 
 def validate_customer(customer: str) -> str:
@@ -77,7 +77,7 @@ def query_body(customer: str, start: datetime, end: datetime, hours: int = 24) -
         {"term": {"agent.labels.customer": customer}},
         {"range": {"timestamp": {"gte": start.isoformat(), "lt": end.isoformat()}}},
     ]
-    high_scope = {"bool": {"filter": scope + [{"range": {"rule.level": {"gte": 10}}}]}}
+    high_scope = {"bool": {"filter": scope + [{"range": {"rule.level": {"gte": 12, "lte": 15}}}]}}
     failed_scope = {"bool": {"filter": scope + [{"term": {"rule.groups": "authentication_failed"}}]}}
     histogram = {
         "field": "timestamp", "time_zone": LOCAL_TZ.key, "min_doc_count": 0,
@@ -160,7 +160,8 @@ def fetch_summary(
     if result.get("hits", {}).get("total", {}).get("relation") != "eq":
         raise RuntimeError("O indexador não confirmou uma contagem exata.")
     return {"customer": customer, "start_utc": start.isoformat(), "end_utc": end.isoformat(),
-            "hours": hours, "extracted_at_utc": datetime.now(timezone.utc).isoformat(),
+            "hours": hours, "priority_scope": "high_critical",
+            "extracted_at_utc": datetime.now(timezone.utc).isoformat(),
             "index": "wazuh-alerts-*", "result": result}
 
 
@@ -220,7 +221,15 @@ def _public_text(value: object) -> str:
     """Keep the collection platform's name out of customer-facing PDFs."""
     neutral = re.sub(r"wazuh[-_ ]+agent\b", "agente de segurança", str(value),
                      flags=re.IGNORECASE)
-    return re.sub(r"wazuh", "plataforma de segurança", neutral, flags=re.IGNORECASE)
+    neutral = re.sub(r"wazuh", "plataforma de segurança", neutral, flags=re.IGNORECASE)
+    def category(match):
+        low = int(match.group(1))
+        high = int(match.group(2)) if match.group(2) else 15 if match.group(3) else low
+        names = [name for start, end, name in SEVERITY_BANDS if start <= high and end >= low]
+        return " / ".join(names) if names else "Sem classificação"
+    return re.sub(r"\b(?:n[ií]ve(?:l|is)|levels?|lv|severity|severidade)\s*[:=]?\s*(\d{1,2})(?!\d)"
+                  r"(?:\s*(?:a|até|to|[-–])\s*(\d{1,2})(?!\d))?(\s*(?:ou superior|\+))?",
+                  category, neutral, flags=re.IGNORECASE)
 
 
 class BarChart(Flowable):
@@ -335,11 +344,11 @@ SECTION_NOTES = {
     "indicators": "Os indicadores mostram a carga de alertas e os recortes para triagem. Use as proporções para dimensionar o trabalho e comparar períodos equivalentes quando houver uma referência histórica.",
     "decisions": "Transforma os números em encaminhamentos para a gestão. A criticidade do serviço, a exposição do ativo e a confirmação das evidências devem orientar a urgência de cada decisão.",
     "trend": "Mostra quando os alertas se concentraram. Picos ajudam a localizar janelas de investigação e a correlacionar mudanças, rotinas e tentativas de acesso; a causa precisa ser verificada nos eventos.",
-    "severity": "Agrupa os alertas pelo nível atribuído pela regra. A distribuição ajuda a organizar a triagem e a dimensionar a fila de análise. A faixa de nível, isoladamente, não determina o impacto no negócio.",
+    "severity": "Agrupa os alertas nas categorias Baixo, Médio, Alto e Crítico. A distribuição ajuda a organizar a triagem e a dimensionar a fila de análise. A severidade, isoladamente, não determina o impacto no negócio.",
     "agents": "Identifica os ativos ou coletores que concentram registros. Isso direciona a investigação e a revisão de rotinas. Um coletor pode representar vários sistemas, por isso a origem real deve ser confirmada.",
     "rules": "Explica quais condições foram mais registradas. Regras frequentes podem indicar atividade esperada, falha operacional ou comportamento suspeito; revisar o contexto evita conclusões baseadas apenas no volume.",
     "auth": "Mostra registros de falha de autenticação. A concentração ajuda a investigar contas, origens e serviços; credenciais desatualizadas, erro de configuração e tentativa indevida são hipóteses a validar.",
-    "priority": "Reúne regras de nível 10 ou superior, usadas neste relatório como critério de triagem. A equipe deve confirmar as evidências e avaliar o serviço afetado antes de classificar um incidente ou seu impacto.",
+    "priority": "Reúne alertas classificados como Alto ou Crítico para orientar a triagem. A equipe deve confirmar as evidências e avaliar o serviço afetado antes de classificar um incidente ou seu impacto.",
     "actions": "Propõe entregas verificáveis para reduzir a incerteza e tratar os achados. O responsável é sugerido por função; a gestão deve confirmar o dono, o prazo e a prioridade no fluxo de atendimento.",
     "followup": "Permite acompanhar se a análise gerou uma ação concluída. Registrar chamado, dono, prazo, estado e evidência de conclusão torna a evolução auditável e ajuda a remover pendências.",
     "evolution": "Indica informações adicionais que aumentariam o valor do relatório. Esses indicadores dependem de outras fontes e ainda não são calculados automaticamente a partir desta consulta.",
@@ -355,6 +364,19 @@ def _percent(value: int, total: int) -> str:
         return "menos de 0,001%"
     precision = 3 if 0 < ratio < 0.01 else 2 if 0 < ratio < 0.1 else 1
     return f"{ratio:.{precision}f}".replace(".", ",") + "%"
+
+
+def _average_eps(snapshot: dict) -> str:
+    start = datetime.fromisoformat(snapshot["start_utc"])
+    end = datetime.fromisoformat(snapshot["end_utc"])
+    seconds = (end - start).total_seconds()
+    if seconds <= 0:
+        raise ValueError("O período deve ter duração positiva para calcular o EPS médio.")
+    rate = snapshot["result"]["hits"]["total"]["value"] / seconds
+    if 0 < rate < 0.0001:
+        return "menos de 0,0001"
+    precision = 4 if 0 < rate < 0.01 else 2
+    return f"{rate:,.{precision}f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
 def _observed_agents(aggregations: dict) -> str:
@@ -378,13 +400,21 @@ def _severity_items(aggregations: dict, total: int) -> list[tuple[str, int]]:
             if low <= level <= high:
                 counts[index] += bucket["doc_count"]
                 break
-    items = [(f"{name} (lv {low}-{high}): {_percent(count, total)}" if low != high
-              else f"{name} (lv {low}): {_percent(count, total)}", count)
-             for (low, high, name), count in zip(SEVERITY_BANDS, counts)]
+    items = [(f"{name}: {_percent(count, total)}", count)
+             for (_, _, name), count in zip(SEVERITY_BANDS, counts)]
     other = max(0, total - sum(counts))
     if other:
-        items.append((f"Sem nível / outros ({_percent(other, total)})", other))
+        items.append((f"Sem classificação / outros ({_percent(other, total)})", other))
     return items
+
+
+def _priority_data(snapshot: dict) -> tuple[int, list, bool]:
+    aggs = snapshot["result"]["aggregations"]
+    if snapshot.get("priority_scope") == "high_critical":
+        return aggs["high"]["doc_count"], aggs["high"]["rules"]["buckets"], True
+    # Old extracts used a different selection. Their rule details cannot be relabeled safely.
+    items = _severity_items(aggs, snapshot["result"]["hits"]["total"]["value"])
+    return items[2][1] + items[3][1], [], False
 
 
 def _section(title: str, key: str, styles: dict) -> list:
@@ -399,7 +429,7 @@ def _quality_rows(snapshot: dict) -> list[list[str]]:
     rows.append(["Execução da consulta", "Sem timeout e sem falhas de shard." if complete
                  else "Consultar o registro da extração original; confirmação indisponível."])
     for key, title in (("missing_agent", "Alertas sem identificação de agente"),
-                       ("missing_level", "Alertas sem nível da regra")):
+                       ("missing_level", "Alertas sem classificação de severidade")):
         value = aggs.get(key, {}).get("doc_count")
         rows.append([title, _number(value) if value is not None else "Não coletado na extração original."])
     for key, title in (("first_event", "Primeiro alerta no recorte"), ("last_event", "Último alerta no recorte")):
@@ -438,11 +468,10 @@ def _story(snapshot: dict) -> list:
     result = snapshot["result"]
     aggs = result["aggregations"]
     total = result["hits"]["total"]["value"]
-    high = aggs["high"]["doc_count"]
+    high, high_rules, priority_details_available = _priority_data(snapshot)
     failures = aggs["failed_auth"]["doc_count"]
     agents = aggs["by_agent"]["buckets"]
     rules = aggs["by_rule"]["buckets"]
-    high_rules = aggs["high"]["rules"]["buckets"]
     failed_agents = aggs["failed_auth"]["agents"]["buckets"]
     buckets = aggs["by_hour"]["buckets"]
     start = datetime.fromisoformat(snapshot["start_utc"]).astimezone(LOCAL_TZ)
@@ -460,9 +489,9 @@ def _story(snapshot: dict) -> list:
              P("Guia de leitura: comece pela visão executiva e consulte o diagnóstico, o plano de ação e a referência técnica conforme a necessidade.", "caption")]
     story += S("Resumo executivo", "summary")
     if total:
-        story.append(P(f"Foram registrados <b>{_number(total)} alertas</b>, incluindo <b>{_number(high)} "
-                       f"de nível 10 ou superior ({_percent(high, total)})</b> e <b>{_number(failures)} "
-                       f"de falha de autenticação ({_percent(failures, total)})</b>. "
+        story.append(P(f"Foram registrados <b>{_number(total)} alertas</b>. "
+                       f"Classificados como Alto ou Crítico: <b>{_number(high)} ({_percent(high, total)})</b>. "
+                       f"Falhas de autenticação: <b>{_number(failures)} ({_percent(failures, total)})</b>. "
                        "A avaliação de impacto depende da análise dos eventos e do contexto dos serviços afetados."))
     else:
         story.append(P("Não foram encontrados alertas no recorte. A equipe deve verificar a cobertura e a saúde da coleta antes de interpretar esse resultado como ausência de atividade de segurança."))
@@ -470,20 +499,22 @@ def _story(snapshot: dict) -> list:
     story.append(_table([
         ["Indicador", "Resultado", "Como usar"],
         ["Alertas no período", _number(total), "Dimensiona o volume recebido."],
-        ["Nível 10 ou superior", f"{_number(high)} ({_percent(high, total)})", "Recorte para validação prioritária."],
+        ["EPS médio (alertas)", _average_eps(snapshot), "Média de alertas indexados por segundo no período."],
+        ["Alto ou Crítico", f"{_number(high)} ({_percent(high, total)})", "Recorte para validação prioritária."],
         ["Falhas de autenticação", f"{_number(failures)} ({_percent(failures, total)})", "Direciona análise de contas e acessos."],
         ["Agentes com alertas", _observed_agents(aggs), "Mostra fontes observadas; requer inventário para medir cobertura."],
         ["Média de alertas por hora", average, "Ajuda a dimensionar carga operacional."],
     ], [150, 105, 195], styles))
-    story.append(P("Um mesmo alerta pode pertencer aos recortes de nível 10+ e falha de autenticação. As contagens representam alertas e podem repetir uma mesma condição.", "caption"))
+    story.append(P("EPS médio = total de alertas indexados dividido pela duração do período em segundos. Eventos processados que não geraram alerta não são contabilizados nesta fonte.", "caption"))
+    story.append(P("Um mesmo alerta pode pertencer aos recortes Alto/Crítico e falha de autenticação. As contagens representam alertas e podem repetir uma mesma condição.", "caption"))
     story += S("Encaminhamento para a gestão", "decisions")
     if high:
-        story.append(P(f"Encaminhar os {_number(high)} alertas de nível 10+ para validação pela equipe de segurança e confirmar quais serviços e responsáveis estão envolvidos. Não há classificação de impacto confirmada nesta extração.", "small"))
+        story.append(P(f"Priorizar a validação dos alertas Altos e Críticos ({_number(high)} no período) pela equipe de segurança e confirmar quais serviços e responsáveis estão envolvidos. Não há classificação de impacto confirmada nesta extração.", "small"))
     else:
-        story.append(P("O recorte não contém alertas de nível 10+. Manter a revisão dos demais sinais e da coleta, considerando a criticidade dos serviços.", "small"))
+        story.append(P("O recorte não contém alertas Altos ou Críticos. Manter a revisão dos demais sinais e da coleta, considerando a criticidade dos serviços.", "small"))
 
     story += [PageBreak(), P("Volume e severidade", "title"),
-              P("Leitura da carga de alertas ao longo do tempo e dos níveis atribuídos pelas regras.", "subtitle")]
+              P("Leitura da carga de alertas ao longo do tempo e das categorias de severidade.", "subtitle")]
     story += S(f"Tendência: volume por {bucket_label}", "trend")
     story.append(TrendChart(buckets, daily=hours == 720, height=145))
     story.append(P(f"Intervalos de {bucket_label}, exibidos no horário de Recife. O primeiro e o último intervalo podem ser parciais. Valores agregados sem deduplicação.", "caption"))
@@ -496,7 +527,7 @@ def _story(snapshot: dict) -> list:
     story += S("Distribuição por severidade", "severity")
     story.append(BarChart(_severity_items(aggs, total), row=22))
     story.append(P(SEVERITY_LEGEND, "caption"))
-    story.append(P("O recorte de nível 10+ usado na triagem inclui parte da faixa Média e as faixas Alta e Crítica. A prioridade de negócio exige análise do ativo e das evidências.", "caption"))
+    story.append(P("Os alertas Altos e Críticos orientam a triagem prioritária. A prioridade de negócio exige análise do ativo e das evidências.", "caption"))
     story.append(P(TERMS_NOTE, "small"))
 
     story += [PageBreak(), P("Ativos e regras com maior volume", "title"),
@@ -524,14 +555,16 @@ def _story(snapshot: dict) -> list:
     story.append(P(f"Foram registrados {_number(failures)} alertas no grupo authentication_failed "
                    f"({_percent(failures, total)} do total). "
                    "Correlacionar conta, origem, serviço e autenticações bem-sucedidas posteriores. Esta consulta não calcula a proporção de tentativas que falharam.", "small"))
-    story += S("Regras de nível 10 ou superior", "priority")
+    story += S("Alertas Altos e Críticos", "priority")
     priority_rows = [["Regra", "Sinal registrado", "Alertas", "Agente com maior volume"]]
     for b in high_rules[:4]:
         agent_list = b.get("agents", {}).get("buckets", [])
         agent = _public_text(agent_list[0]["key"])[:80] if agent_list else "Não identificado"
         priority_rows.append([str(b["key"]), _public_text(_description(b))[:120], _number(b["doc_count"]), agent])
     if len(priority_rows) == 1:
-        priority_rows.append(["-", "Nenhum alerta de nível 10+ no intervalo.", "0", "-"])
+        message = ("Detalhamento por regra requer nova extração com a classificação atual."
+                   if high and not priority_details_available else "Nenhum alerta Alto ou Crítico no intervalo.")
+        priority_rows.append(["-", message, "-" if high else "0", "-"])
     story.append(_table(priority_rows, [42, 223, 60, 125], styles))
     story.append(P("Para cada regra, recuperar os eventos brutos pelo identificador e verificar origem, conta, processo, ativo e mudanças autorizadas. Repetições devem ser correlacionadas antes de contar incidentes.", "small"))
 
@@ -540,7 +573,7 @@ def _story(snapshot: dict) -> list:
     story += S("Ações propostas", "actions")
     actions = []
     if high:
-        actions.append(["Validar regras de nível 10+ e registrar contexto, classificação e evidências. Concluir com decisão de tratamento e chamado vinculado quando aplicável.", "Segurança / SOC"])
+        actions.append(["Validar alertas Altos e Críticos e registrar contexto, classificação e evidências. Concluir com decisão de tratamento e chamado vinculado quando aplicável.", "Segurança / SOC"])
     if failures:
         actions.append(["Investigar falhas de autenticação por conta e origem, correlacionando sucesso posterior. Concluir com causa identificada e medida adotada ou justificativa documentada.", "IAM / Infraestrutura"])
     if total:
@@ -596,16 +629,18 @@ def _template_story() -> list:
              P("Cliente {{CLIENTE}} | Período {{24h / 7d / 30d}} | {{INÍCIO}} a {{FIM}} | Recife | Confidencial", "subtitle"),
              P("Preencher os campos entre chaves com dados da consulta. Preservar as descrições e registrar as validações humanas.", "small")]
     story += S("Resumo executivo", "summary")
-    story.append(P("{{TOTAL}} alertas no período; {{NÍVEL_10_MAIS}} ({{PERCENTUAL}}) com nível 10+ e {{FALHAS}} ({{PERCENTUAL}}) de falha de autenticação. {{SÍNTESE_DOS_SINAIS_E_SERVIÇOS_ENVOLVIDOS}}", "small"))
+    story.append(P("{{TOTAL}} alertas no período; {{ALTOS_E_CRITICOS}} ({{PERCENTUAL}}) classificados como Alto ou Crítico e {{FALHAS}} ({{PERCENTUAL}}) de falha de autenticação. {{SÍNTESE_DOS_SINAIS_E_SERVIÇOS_ENVOLVIDOS}}", "small"))
     story += S("Principais indicadores", "indicators")
     story.append(_table([["Indicador", "Resultado", "Como usar"],
                          ["Alertas no período", "{{TOTAL}}", "Dimensionar a carga recebida."],
-                         ["Nível 10 ou superior", "{{N}} ({{%}})", "Direcionar validação prioritária."],
+                         ["EPS médio (alertas)", "{{EPS_MEDIO}}", "Média de alertas indexados por segundo."],
+                         ["Alto ou Crítico", "{{N}} ({{%}})", "Direcionar validação prioritária."],
                          ["Falhas de autenticação", "{{N}} ({{%}})", "Direcionar análise de acessos."],
                          ["Agentes com alertas", "{{N / estimativa}}", "Fontes observadas; cruzar com inventário."],
                          ["Média de alertas por hora", "{{TOTAL / HORAS}}", "Dimensionar a carga operacional."]],
                         [150, 105, 195], styles))
-    story.append(P("Nível 10+ e falhas de autenticação podem se sobrepor. Registrar a base de cada percentual.", "caption"))
+    story.append(P("EPS médio = {{TOTAL_DE_ALERTAS}} / {{DURAÇÃO_EM_SEGUNDOS}}. A fonte inclui alertas indexados; eventos processados sem gerar alerta ficam fora desse cálculo.", "caption"))
+    story.append(P("Alertas Altos/Críticos e falhas de autenticação podem se sobrepor. Registrar a base de cada percentual.", "caption"))
     story += S("Encaminhamento para a gestão", "decisions")
     story.append(P("{{DECISÃO_SUGERIDA}} | {{SERVIÇOS_A_VALIDAR}} | {{RESPONSÁVEL_A_CONFIRMAR}}. Informar se o impacto está confirmado ou se a análise permanece pendente.", "small"))
 
@@ -616,7 +651,7 @@ def _template_story() -> list:
     story += S("Distribuição por severidade", "severity")
     story.append(ChartPlaceholder("Contagem e percentual por faixa de severidade", 125))
     story.append(P(SEVERITY_LEGEND, "caption"))
-    story.append(P("Mostrar separadamente níveis ausentes ou fora das faixas. Não atribuir impacto de negócio automaticamente pela faixa.", "caption"))
+    story.append(P("Mostrar separadamente severidades ausentes ou não classificadas. Não atribuir impacto de negócio automaticamente pela categoria.", "caption"))
     story.append(P(TERMS_NOTE, "small"))
 
     story += [PageBreak(), P("Ativos e regras com maior volume", "title")]
@@ -633,7 +668,7 @@ def _template_story() -> list:
     story += S("Falhas de autenticação", "auth")
     story.append(ChartPlaceholder("Falhas de autenticação por agente", 110))
     story.append(P("{{N}} alertas de falha ({{%_DO_TOTAL_DE_ALERTAS}}). Registrar hipóteses, conta/origem quando validadas e eventual sucesso posterior. A base de tentativas totais é necessária para calcular taxa de falha.", "small"))
-    story += S("Regras de nível 10 ou superior", "priority")
+    story += S("Alertas Altos e Críticos", "priority")
     story.append(_table([["Regra", "Sinal registrado", "Alertas", "Agente principal"],
                          ["{{ID}}", "{{DESCRIÇÃO}}", "{{N}}", "{{AGENTE}}"],
                          ["{{ID}}", "{{DESCRIÇÃO}}", "{{N}}", "{{AGENTE}}"]], [42, 223, 60, 125], styles))
@@ -657,7 +692,7 @@ def _template_story() -> list:
                          ["Extraído em UTC", "{{DATA_HORA_EXTRAÇÃO}}"]], [145, 305], styles))
     story += S("Qualidade observável na extração", "quality")
     story.append(_table([["Verificação", "Resultado"], ["Timeout / falhas de shard", "{{RESULTADO}}"],
-                         ["Sem agente / sem nível", "{{CONTAGENS_OU_NÃO_COLETADO}}"],
+                         ["Sem agente / sem severidade", "{{CONTAGENS_OU_NÃO_COLETADO}}"],
                          ["Primeiro / último alerta", "{{HORÁRIOS_OU_NÃO_COLETADO}}"]], [180, 270], styles))
     story += S("Limites de interpretação", "limits")
     story.append(P("Registrar limitações de cobertura, ingestão, campos ausentes, agregação e validação dos eventos brutos. Alertas podem repetir condições e se sobrepor em recortes. Listas dos maiores volumes não representam todo o inventário. Informar se não há base histórica, criticidade de ativos ou dados de atendimento.", "small"))

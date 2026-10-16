@@ -1,5 +1,5 @@
 Name:           wazuh-security-reports
-Version:        0.3.1
+Version:        0.3.2
 Release:        1%{?dist}
 Summary:        GTK4 application for customer Wazuh security reports
 License:        LicenseRef-Internal

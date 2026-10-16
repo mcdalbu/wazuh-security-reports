@@ -11,16 +11,17 @@ from unittest.mock import patch
 
 from pypdf import PdfReader
 
-from wazuh_report import _percent, _severity_items, fetch_summary, render_report, render_template
+from wazuh_report import (_average_eps, _percent, _priority_data, _severity_items, fetch_summary,
+                          render_report, render_template)
 
 
 def sample_snapshot(total=20):
     end = datetime(2026, 10, 16, 12, tzinfo=timezone.utc)
     rule = {"key": "100", "doc_count": total,
-            "description": {"buckets": [{"key": "Wazuh agent <teste> & validação"}]},
+            "description": {"buckets": [{"key": "Wazuh agent <teste> & validação (nível 12)"}]},
             "agents": {"buckets": [{"key": "COLETOR", "doc_count": total}]}}
     return {
-        "customer": "CLIENTE_TESTE", "hours": 24,
+        "customer": "CLIENTE_TESTE", "hours": 24, "priority_scope": "high_critical",
         "start_utc": (end - timedelta(hours=24)).isoformat(), "end_utc": end.isoformat(),
         "extracted_at_utc": end.isoformat(),
         "result": {"timed_out": False, "_shards": {"failed": 0},
@@ -44,6 +45,22 @@ def sample_snapshot(total=20):
 
 
 class ReportTests(unittest.TestCase):
+    def test_average_eps_uses_actual_period_including_empty_intervals(self):
+        for hours in (24, 168, 720):
+            with self.subTest(hours=hours):
+                snapshot = sample_snapshot(hours * 3600 * 3)
+                end = datetime.fromisoformat(snapshot['end_utc'])
+                snapshot['start_utc'] = (end - timedelta(hours=hours)).isoformat()
+                snapshot['hours'] = hours
+                self.assertEqual(_average_eps(snapshot), '3,00')
+        self.assertEqual(_average_eps(sample_snapshot(1966492)), '22,76')
+        self.assertEqual(_average_eps(sample_snapshot(0)), '0,00')
+        self.assertEqual(_average_eps(sample_snapshot(1)), 'menos de 0,0001')
+        snapshot = sample_snapshot()
+        snapshot['start_utc'] = snapshot['end_utc']
+        with self.assertRaises(ValueError):
+            _average_eps(snapshot)
+
     def test_severity_boundaries_follow_customer_legend(self):
         levels = {0: 1, 6: 2, 7: 4, 9: 8, 10: 16, 11: 32, 12: 64, 14: 128, 15: 256}
         total = sum(levels.values())
@@ -53,7 +70,18 @@ class ReportTests(unittest.TestCase):
         self.assertEqual([count for _, count in items], [3, 60, 192, 256])
         for (label, _), name in zip(items, ("Baixo", "Médio", "Alto", "Crítico")):
             self.assertTrue(label.startswith(name))
+            self.assertNotRegex(label, r"\b(?:lv|nível)\s*\d")
         self.assertEqual(sum(count for _, count in items), total)
+
+    def test_legacy_priority_details_are_not_mislabeled_as_high(self):
+        snapshot = sample_snapshot()
+        del snapshot['priority_scope']
+        snapshot['result']['aggregations']['by_level']['buckets'] = [
+            {'key': 11, 'doc_count': 19}, {'key': 15, 'doc_count': 1}]
+        count, rules, available = _priority_data(snapshot)
+        self.assertEqual(count, 1)
+        self.assertEqual(rules, [])
+        self.assertFalse(available)
 
     def test_every_period_preserves_customer_and_utc_scope(self):
         now = datetime(2026, 10, 16, 12, tzinfo=timezone.utc)
@@ -72,6 +100,8 @@ class ReportTests(unittest.TestCase):
                                  {"gte": (now - timedelta(hours=hours)).isoformat(), "lt": now.isoformat()})
                 self.assertEqual(body["aggs"]["by_hour"]["date_histogram"][kind], interval)
                 self.assertEqual(body["aggs"]["by_hour"]["date_histogram"]["time_zone"], "America/Recife")
+                priority_filters = body['aggs']['high']['filter']['bool']['filter']
+                self.assertIn({'range': {'rule.level': {'gte': 12, 'lte': 15}}}, priority_filters)
                 self.assertEqual(snapshot["hours"], hours)
 
     def test_small_nonzero_shares_remain_visible(self):
@@ -81,6 +111,7 @@ class ReportTests(unittest.TestCase):
 
     def test_pdf_supports_single_bucket_empty_and_legacy_snapshots(self):
         legacy = copy.deepcopy(sample_snapshot())
+        del legacy['priority_scope']
         for key in ("agents_observed", "missing_agent", "missing_level", "first_event", "last_event"):
             del legacy["result"]["aggregations"][key]
         cases = [("single", sample_snapshot()), ("empty", sample_snapshot(0)), ("legacy", legacy)]
@@ -101,6 +132,9 @@ class ReportTests(unittest.TestCase):
                         self.assertTrue(page.get("/Resources").get("/XObject"))
                     self.assertNotIn("wazuh", (text + str(reader.metadata)).lower())
                     self.assertNotIn("{{", text)
+                    self.assertIn('EPS médio (alertas)', text)
+                    self.assertNotRegex(text, r"(?i)\b(?:lv|nível|níveis|level|severity|severidade)[ \t]*[:=]?[ \t]*\d")
+                    self.assertNotIn('10+', text)
                     self.assertIn("evidência", text.lower())
                     if name == "single":
                         self.assertIn("<teste> & validação", text)
@@ -116,6 +150,8 @@ class ReportTests(unittest.TestCase):
             self.assertIn("Indicadores úteis para a próxima evolução", text)
             self.assertNotIn("wazuh", (text + str(reader.metadata)).lower())
             self.assertNotIn("CLIENTE_TESTE", text)
+            self.assertNotRegex(text, r"(?i)\b(?:lv|nível|níveis)\s*\d")
+            self.assertNotIn('10+', text)
 
 
 if __name__ == "__main__":

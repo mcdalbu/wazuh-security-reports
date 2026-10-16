@@ -14,7 +14,7 @@ Preencher os campos entre chaves com evidências. Preservar as descrições das 
 
 Resume o que merece atenção e ajuda a gestão a direcionar a equipe. A avaliação de impacto depende dos serviços envolvidos e da validação dos sinais registrados.
 
-Foram registrados **{{TOTAL}} alertas**, incluindo **{{NIVEL_10_MAIS}} ({{PERCENTUAL_10_MAIS}})** de nível 10 ou superior e **{{FALHAS_AUTENTICACAO}} ({{PERCENTUAL_FALHAS_NO_TOTAL}})** de falha de autenticação. {{SINAIS_RELEVANTES_E_CONTEXTO_DOS_SERVICOS}}. {{O_QUE_FOI_CONFIRMADO_E_O_QUE_AGUARDA_ANALISE}}.
+Foram registrados **{{TOTAL}} alertas**, incluindo **{{ALTOS_E_CRITICOS}} ({{PERCENTUAL_ALTOS_E_CRITICOS}})** classificados como Alto ou Crítico e **{{FALHAS_AUTENTICACAO}} ({{PERCENTUAL_FALHAS_NO_TOTAL}})** de falha de autenticação. {{SINAIS_RELEVANTES_E_CONTEXTO_DOS_SERVICOS}}. {{O_QUE_FOI_CONFIRMADO_E_O_QUE_AGUARDA_ANALISE}}.
 
 Se não houver alertas, verificar a cobertura e a saúde da coleta antes de interpretar a ausência de registros.
 
@@ -25,12 +25,15 @@ Mostram a carga recebida e os recortes para triagem. Percentuais ajudam a dimens
 | Indicador | Resultado | Como interpretar |
 |---|---|---|
 | Alertas no período | {{TOTAL}} | Volume recebido; pode repetir uma mesma condição. |
-| Nível 10 ou superior | {{N}} ({{%_DO_TOTAL}}) | Recorte para validação prioritária neste relatório. |
+| EPS médio (alertas) | {{EPS_MEDIO}} | Total de alertas indexados dividido pela duração analisada em segundos. |
+| Alto ou Crítico | {{N}} ({{%_DO_TOTAL}}) | Recorte para validação prioritária neste relatório. |
 | Falhas de autenticação | {{N}} ({{%_DO_TOTAL_DE_ALERTAS}}) | Direciona a investigação de contas e acessos. |
 | Agentes com alertas | {{QUANTIDADE_E_TIPO_DE_CONTAGEM}} | Fontes observadas; identificar estimativa ou limite inferior. |
 | Média de alertas por hora | {{TOTAL_DIVIDIDO_PELAS_HORAS}} | Apoia o dimensionamento da carga operacional. |
 
-Alertas de nível 10+ e falhas de autenticação podem se sobrepor. A participação de falhas no total de alertas não é a taxa de falha das tentativas de autenticação. Não somar recortes sobrepostos.
+Alertas Altos ou Críticos e falhas de autenticação podem se sobrepor. A participação de falhas no total de alertas não é a taxa de falha das tentativas de autenticação. Não somar recortes sobrepostos.
+
+**Cálculo do EPS médio:** `total de alertas indexados / (fim UTC - início UTC em segundos)`. Usar toda a duração do período, incluindo intervalos sem alertas. A fonte não contabiliza os eventos processados que não geraram alerta.
 
 ### Encaminhamento para a gestão
 
@@ -52,18 +55,13 @@ Usar 1 hora para 24h, 6 horas para 7d e dia de calendário de Recife para 30d. I
 
 ### Distribuição por severidade
 
-Agrupa os níveis atribuídos pelas regras para organizar a triagem. O impacto no negócio depende do contexto e da evidência, além do nível registrado.
+Agrupa as categorias de severidade para organizar a triagem. O impacto no negócio depende do contexto e da evidência, além da severidade registrada.
 
 {{GRAFICO_DE_BARRAS_COM_CONTAGEM_E_PERCENTUAL_POR_SEVERIDADE}}
 
-| Níveis | Severidade |
-|---|---|
-| lv 0 a 6 | Baixo |
-| lv 7 a 11 | Médio |
-| lv 12 a 14 | Alto |
-| lv 15 | Crítico |
+**Categorias apresentadas:** Baixo, Médio, Alto e Crítico.
 
-Mostrar separadamente alertas sem nível ou fora das faixas. O recorte de nível 10+ usado na triagem inclui parte da faixa Média e as faixas Alta e Crítica. O impacto no negócio exige validação.
+Mostrar separadamente alertas sem classificação de severidade. Os alertas Altos e Críticos orientam a triagem prioritária. O impacto no negócio exige validação.
 
 **Vocabulário:** alerta é um registro de condição detectada; regra é o critério que o gerou; agente ou coletor é a fonte que o encaminhou; incidente é uma ocorrência validada que requer tratamento no processo de resposta.
 
@@ -97,9 +95,9 @@ Ajuda a investigar contas, origens e serviços com falhas recorrentes. Credencia
 
 **Leitura:** {{N}} alertas de falha, {{%_DO_TOTAL_DE_ALERTAS}} do total. {{CONTA_ORIGEM_E_SERVICO_QUANDO_VALIDADOS}}. {{SUCESSO_POSTERIOR}}. Uma taxa de falha exige o total de tentativas com semântica e cobertura equivalentes.
 
-### Regras de nível 10 ou superior
+### Alertas Altos e Críticos
 
-Reúne sinais selecionados para triagem. Confirmar evidências e avaliar o ativo e o serviço antes de classificar um incidente ou seu impacto.
+Reúne os sinais classificados como Alto ou Crítico para triagem. Confirmar evidências e avaliar o ativo e o serviço antes de classificar um incidente ou seu impacto.
 
 | Regra | Sinal registrado | Alertas | Agente principal |
 |---|---|---:|---|
@@ -167,7 +165,7 @@ Ajuda o leitor a entender a confiança disponível. Campos ausentes, ingestão e
 |---|---|---|
 | Total exato, timeout e falhas de shard | {{RESULTADO}} | Consulta incompleta não sustenta um relatório final. |
 | Sem identificação de agente | {{CONTAGEM_OU_NAO_COLETADO}} | Limita a atribuição a fontes. |
-| Sem nível da regra | {{CONTAGEM_OU_NAO_COLETADO}} | Limita a distribuição por nível. |
+| Sem classificação de severidade | {{CONTAGEM_OU_NAO_COLETADO}} | Limita a distribuição por severidade. |
 | Primeiro e último alerta | {{HORARIOS_OU_NAO_COLETADO}} | Mostra atividade observada; não comprova continuidade da coleta. |
 
 ### Limites de interpretação
