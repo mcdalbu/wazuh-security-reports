@@ -77,17 +77,19 @@ def query_body(customer: str, start: datetime, end: datetime, hours: int = 24) -
     ]
     high_scope = {"bool": {"filter": scope + [{"range": {"rule.level": {"gte": 10}}}]}}
     failed_scope = {"bool": {"filter": scope + [{"term": {"rule.groups": "authentication_failed"}}]}}
+    histogram = {
+        "field": "timestamp", "time_zone": LOCAL_TZ.key, "min_doc_count": 0,
+        "extended_bounds": {"min": start.isoformat(),
+                            "max": (end - timedelta(microseconds=1)).isoformat()},
+    }
+    histogram["calendar_interval" if hours == 720 else "fixed_interval"] = PERIODS[hours][1]
     return {
         "size": 0,
         "track_total_hits": True,
         "query": {"bool": {"filter": scope}},
         "aggs": {
             "by_level": {"terms": {"field": "rule.level", "size": 20}},
-            "by_hour": {"date_histogram": {
-                "field": "timestamp", "fixed_interval": PERIODS[hours][1], "min_doc_count": 0,
-                "extended_bounds": {"min": start.isoformat(),
-                                    "max": (end - timedelta(microseconds=1)).isoformat()},
-            }},
+            "by_hour": {"date_histogram": histogram},
             "by_agent": {"terms": {"field": "agent.id", "size": 30}, "aggs": {
                 "name": {"terms": {"field": "agent.name", "size": 1}},
             }},
