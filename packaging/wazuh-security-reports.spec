@@ -1,5 +1,5 @@
 Name:           wazuh-security-reports
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        GTK4 application for customer Wazuh security reports
 License:        LicenseRef-Internal
@@ -38,6 +38,7 @@ install -m 0644 packaging/br.com.hostdime.WazuhSecurityReports.desktop %{buildro
 install -m 0644 assets/br.com.hostdime.WazuhSecurityReports.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
 install -m 0644 assets/br.com.hostdime.WazuhSecurityReports.png %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/
 install -m 0644 README.md %{buildroot}%{_docdir}/%{name}/
+install -m 0644 modelo_relatorio_seguranca.md %{buildroot}%{_docdir}/%{name}/
 
 %files
 %{_bindir}/wazuh-security-reports
@@ -48,4 +49,5 @@ install -m 0644 README.md %{buildroot}%{_docdir}/%{name}/
 %{_datadir}/wazuh-security-reports/wazuh_security_app.py
 %{_datadir}/wazuh-security-reports/assets/timbrado_confidencial.pdf
 %{_docdir}/%{name}/README.md
+%{_docdir}/%{name}/modelo_relatorio_seguranca.md
 

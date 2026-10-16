@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 NAME = "wazuh-security-reports"
 DIST = ROOT / "dist"
 PAYLOAD = [
@@ -26,6 +26,7 @@ PAYLOAD = [
     "packaging/wazuh-security-reports",
     "packaging/br.com.hostdime.WazuhSecurityReports.desktop",
     "README.md",
+    "modelo_relatorio_seguranca.md",
 ]
 
 
@@ -42,6 +43,7 @@ def copy_payload(stage: Path) -> None:
         "packaging/br.com.hostdime.WazuhSecurityReports.desktop":
             "usr/share/applications/br.com.hostdime.WazuhSecurityReports.desktop",
         "README.md": "usr/share/doc/wazuh-security-reports/README.md",
+        "modelo_relatorio_seguranca.md": "usr/share/doc/wazuh-security-reports/modelo_relatorio_seguranca.md",
     }
     for source, target in files.items():
         destination = stage / target
