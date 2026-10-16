@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Relatórios de Segurança Wazuh
+Comment=Gera relatórios de segurança por cliente a partir do Wazuh
+Exec=wazuh-security-reports
+Icon=br.com.hostdime.WazuhSecurityReports
+Terminal=false
+Categories=Utility;System;
+StartupNotify=true

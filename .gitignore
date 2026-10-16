@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+output/
+relatorio_wazuh_*.md
+/build_*.py
+.env
+.env.*
+.venv/
+*.log
+*snapshot*.json

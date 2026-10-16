@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Relatórios de Segurança Wazuh">
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f87619"/>
+      <stop offset="1" stop-color="#df4c00"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="27" fill="#fff6ef"/>
+  <path d="M64 17 105 34v29c0 27-16 43-41 51C39 106 23 90 23 63V34Z" fill="url(#shield)"/>
+  <path d="M64 27 95 40v23c0 20-11 33-31 40-20-7-31-20-31-40V40Z" fill="none" stroke="#fff" stroke-opacity=".58" stroke-width="2"/>
+  <rect x="40" y="43" width="48" height="47" rx="7" fill="#fff"/>
+  <path d="M49 53h23M49 61h17" stroke="#c9d0d6" stroke-width="4" stroke-linecap="round"/>
+  <rect x="49" y="73" width="7" height="10" rx="2" fill="#f87619"/>
+  <rect x="60" y="68" width="7" height="15" rx="2" fill="#f87619"/>
+  <rect x="71" y="63" width="7" height="20" rx="2" fill="#e45405"/>
+</svg>

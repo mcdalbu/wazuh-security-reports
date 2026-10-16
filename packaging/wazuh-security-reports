@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 /usr/share/wazuh-security-reports/wazuh_security_app.py "$@"
