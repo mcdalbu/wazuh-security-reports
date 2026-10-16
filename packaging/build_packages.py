@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 NAME = "wazuh-security-reports"
 DIST = ROOT / "dist"
 PAYLOAD = [

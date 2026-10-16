@@ -4,8 +4,8 @@ Aplicação GTK4/libadwaita para gerar um relatório PDF por cliente. A janela r
 
 ## Instalar os pacotes
 
-- Debian/Ubuntu: `sudo apt install ./dist/wazuh-security-reports_0.3.0-1_all.deb`
-- Fedora/RHEL: `sudo dnf install ./dist/wazuh-security-reports-0.3.0-1.noarch.rpm`
+- Debian/Ubuntu: `sudo apt install ./dist/wazuh-security-reports_0.3.1-1_all.deb`
+- Fedora/RHEL: `sudo dnf install ./dist/wazuh-security-reports-0.3.1-1.noarch.rpm`
 
 O instalador coloca um lançador chamado **Relatórios de Segurança Wazuh** no menu de aplicativos, com ícone próprio. Os pacotes declaram as bibliotecas GTK4/libadwaita e PDF como dependências. O destino padrão dos relatórios é `~/Relatorios Wazuh`, que pode ser alterado na janela.
 
@@ -41,6 +41,8 @@ O filtro de cliente é um `term` exato em `agent.labels.customer`; o período us
 O módulo `wazuh_report.py` contém a consulta e a renderização; `wazuh_security_app.py` contém a interface. O modelo editável está em `modelo_relatorio_seguranca.md`. O PDF gerado é salvo de forma atômica para evitar arquivos parciais.
 
 ## Leitura gerencial e técnica
+
+A distribuição por severidade usa a legenda: **Baixo (lv 0 a 6)**, **Médio (lv 7 a 11)**, **Alto (lv 12 a 14)** e **Crítico (lv 15)**. O recorte de nível 10+ para triagem inclui parte da faixa Média e as faixas Alta e Crítica.
 
 O relatório e o modelo em PDF compartilham as descrições das seções. A apresentação contém seis partes: visão executiva, volume e severidade, ativos e regras, acessos e sinais para investigação, plano de ação e referência técnica. Cada seção explica o que é apresentado, sua utilidade e os cuidados de interpretação.
 

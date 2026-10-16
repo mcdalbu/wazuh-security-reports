@@ -50,13 +50,20 @@ Usar 1 hora para 24h, 6 horas para 7d e dia de calendário de Recife para 30d. I
 
 **Leitura:** {{INICIO_DO_MAIOR_INTERVALO}}, {{CONTAGEM_E_PARTICIPACAO_NO_TOTAL}}. {{MUDANCA_OU_ROTINA_A_VERIFICAR}}. Só afirmar aumento ou anomalia com base comparável e critérios definidos.
 
-### Distribuição por nível
+### Distribuição por severidade
 
 Agrupa os níveis atribuídos pelas regras para organizar a triagem. O impacto no negócio depende do contexto e da evidência, além do nível registrado.
 
-{{GRAFICO_DE_BARRAS_COM_CONTAGEM_E_PERCENTUAL_NAS_FAIXAS_0_A_6_7_A_9_10_A_12_13_A_15}}
+{{GRAFICO_DE_BARRAS_COM_CONTAGEM_E_PERCENTUAL_POR_SEVERIDADE}}
 
-Mostrar separadamente alertas sem nível ou fora das faixas. O nível 10+ é um critério de triagem, sem classificação automática de impacto.
+| Níveis | Severidade |
+|---|---|
+| lv 0 a 6 | Baixo |
+| lv 7 a 11 | Médio |
+| lv 12 a 14 | Alto |
+| lv 15 | Crítico |
+
+Mostrar separadamente alertas sem nível ou fora das faixas. O recorte de nível 10+ usado na triagem inclui parte da faixa Média e as faixas Alta e Crítica. O impacto no negócio exige validação.
 
 **Vocabulário:** alerta é um registro de condição detectada; regra é o critério que o gerou; agente ou coletor é a fonte que o encaminhou; incidente é uma ocorrência validada que requer tratamento no processo de resposta.
 

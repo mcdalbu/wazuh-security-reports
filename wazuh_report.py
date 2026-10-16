@@ -39,6 +39,8 @@ PERIODS = {
     168: ("7 dias", "6h", "6 horas"),
     720: ("30 dias", "1d", "dia"),
 }
+SEVERITY_BANDS = ((0, 6, "Baixo"), (7, 11, "Médio"), (12, 14, "Alto"), (15, 15, "Crítico"))
+SEVERITY_LEGEND = "Legenda: lv 0 a 6 - Baixo; lv 7 a 11 - Médio; lv 12 a 14 - Alto; lv 15 - Crítico."
 
 
 def validate_customer(customer: str) -> str:
@@ -372,12 +374,13 @@ def _severity_items(aggregations: dict, total: int) -> list[tuple[str, int]]:
             level = int(bucket["key"])
         except (ValueError, TypeError):
             continue
-        for index, (low, high) in enumerate(((0, 6), (7, 9), (10, 12), (13, 15))):
+        for index, (low, high, _) in enumerate(SEVERITY_BANDS):
             if low <= level <= high:
                 counts[index] += bucket["doc_count"]
                 break
-    items = [(f"Níveis {label} ({_percent(count, total)})", count)
-             for label, count in zip(("0 a 6", "7 a 9", "10 a 12", "13 a 15"), counts)]
+    items = [(f"{name} (lv {low}-{high}): {_percent(count, total)}" if low != high
+              else f"{name} (lv {low}): {_percent(count, total)}", count)
+             for (low, high, name), count in zip(SEVERITY_BANDS, counts)]
     other = max(0, total - sum(counts))
     if other:
         items.append((f"Sem nível / outros ({_percent(other, total)})", other))
@@ -490,9 +493,10 @@ def _story(snapshot: dict) -> list:
         story.append(P(f"<b>Maior intervalo observado:</b> {_number(peak['doc_count'])} alertas "
                        f"({_percent(peak['doc_count'], total)} do período), com início em {stamp:%d/%m/%Y %H:%M}. "
                        "Comparar com mudanças e rotinas desse horário; o gráfico sozinho não confirma uma anomalia.", "small"))
-    story += S("Distribuição por nível", "severity")
+    story += S("Distribuição por severidade", "severity")
     story.append(BarChart(_severity_items(aggs, total), row=22))
-    story.append(P("Faixas numéricas usadas para leitura da distribuição. O nível 10+ é um critério de seleção para triagem deste relatório; a prioridade de negócio exige análise do ativo e das evidências.", "caption"))
+    story.append(P(SEVERITY_LEGEND, "caption"))
+    story.append(P("O recorte de nível 10+ usado na triagem inclui parte da faixa Média e as faixas Alta e Crítica. A prioridade de negócio exige análise do ativo e das evidências.", "caption"))
     story.append(P(TERMS_NOTE, "small"))
 
     story += [PageBreak(), P("Ativos e regras com maior volume", "title"),
@@ -609,8 +613,9 @@ def _template_story() -> list:
     story += S("Tendência temporal", "trend")
     story.append(ChartPlaceholder("Série temporal dos alertas do cliente", 145))
     story.append(P("Usar 1h para 24h, 6h para 7d e dia de calendário de Recife para 30d. Indicar intervalos parciais e lacunas. {{PICO_E_CONTEXTO_A_VALIDAR}}.", "caption"))
-    story += S("Distribuição por nível", "severity")
-    story.append(ChartPlaceholder("Contagem e percentual nas faixas 0-6, 7-9, 10-12 e 13-15", 125))
+    story += S("Distribuição por severidade", "severity")
+    story.append(ChartPlaceholder("Contagem e percentual por faixa de severidade", 125))
+    story.append(P(SEVERITY_LEGEND, "caption"))
     story.append(P("Mostrar separadamente níveis ausentes ou fora das faixas. Não atribuir impacto de negócio automaticamente pela faixa.", "caption"))
     story.append(P(TERMS_NOTE, "small"))
 

@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from pypdf import PdfReader
 
-from wazuh_report import _percent, fetch_summary, render_report, render_template
+from wazuh_report import _percent, _severity_items, fetch_summary, render_report, render_template
 
 
 def sample_snapshot(total=20):
@@ -44,6 +44,17 @@ def sample_snapshot(total=20):
 
 
 class ReportTests(unittest.TestCase):
+    def test_severity_boundaries_follow_customer_legend(self):
+        levels = {0: 1, 6: 2, 7: 4, 9: 8, 10: 16, 11: 32, 12: 64, 14: 128, 15: 256}
+        total = sum(levels.values())
+        aggs = {"by_level": {"buckets": [{"key": level, "doc_count": count}
+                                         for level, count in levels.items()]}}
+        items = _severity_items(aggs, total)
+        self.assertEqual([count for _, count in items], [3, 60, 192, 256])
+        for (label, _), name in zip(items, ("Baixo", "Médio", "Alto", "Crítico")):
+            self.assertTrue(label.startswith(name))
+        self.assertEqual(sum(count for _, count in items), total)
+
     def test_every_period_preserves_customer_and_utc_scope(self):
         now = datetime(2026, 10, 16, 12, tzinfo=timezone.utc)
         response = sample_snapshot()["result"]
