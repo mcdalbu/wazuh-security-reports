@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 NAME = "wazuh-security-reports"
 DIST = ROOT / "dist"
 PAYLOAD = [
@@ -67,7 +67,7 @@ def build_deb(work: Path) -> Path:
         "gir1.2-adw-1 (>= 1.4), python3-reportlab, python3-pypdf, fonts-dejavu-core\n"
         "Description: Interface para relatórios de segurança Wazuh por cliente\n"
         " Gera PDFs com gráficos e papel timbrado a partir de alertas filtrados\n"
-        " pelo valor exato de agent.labels.customer nas últimas 24 horas.\n",
+        " pelo valor exato de agent.labels.customer em 24 horas, 7 ou 30 dias.\n",
         encoding="utf-8",
     )
     output = DIST / f"{NAME}_{VERSION}-1_all.deb"
@@ -119,7 +119,7 @@ def main() -> int:
     for output in outputs:
         print(output)
     checksums = DIST / "SHA256SUMS"
-    package_files = sorted(DIST.glob("*.deb")) + sorted(DIST.glob("*.rpm"))
+    package_files = sorted(outputs)
     checksums.write_text("".join(
         f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in package_files
     ))

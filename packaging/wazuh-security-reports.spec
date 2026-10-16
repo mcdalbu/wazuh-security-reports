@@ -1,5 +1,5 @@
 Name:           wazuh-security-reports
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        GTK4 application for customer Wazuh security reports
 License:        LicenseRef-Internal
@@ -17,7 +17,7 @@ Requires:       dejavu-sans-fonts
 %description
 Generates customer-scoped Wazuh security reports as branded PDFs with charts.
 The application asks for an exact agent.labels.customer value and queries the
-last 24 hours from Wazuh Indexer.
+last 24 hours, 7 days or 30 days from the alert indexer.
 
 %prep
 %setup -q

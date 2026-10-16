@@ -19,7 +19,8 @@ except (ImportError, ValueError) as error:
         "GTK4/libadwaita não estão disponíveis. Consulte README.md para instalar as dependências."
     ) from error
 
-from wazuh_report import DEFAULT_OUTPUT_DIR, default_filename, fetch_summary, indexer_url, render_report, validate_customer
+from wazuh_report import (DEFAULT_OUTPUT_DIR, PERIODS, default_filename, fetch_summary,
+                          indexer_url, render_report, validate_customer)
 
 
 class ReportWindow(Adw.ApplicationWindow):
@@ -42,12 +43,19 @@ class ReportWindow(Adw.ApplicationWindow):
 
         scope = Adw.PreferencesGroup(
             title="Relatório",
-            description="Informe o valor exato de agent.labels.customer. O período é de 24 horas.",
+            description="Informe o valor exato de agent.labels.customer e escolha o período.",
         )
         page.add(scope)
         self.customer = Adw.EntryRow(title="agent.labels.customer")
         self.customer.connect("changed", self._validate)
         scope.add(self.customer)
+        self.period_hours = tuple(PERIODS)
+        self.time_range = Adw.ComboRow(
+            title="Período",
+            model=Gtk.StringList.new([PERIODS[hours][0] for hours in self.period_hours]),
+        )
+        self.time_range.set_selected(0)
+        scope.add(self.time_range)
 
         connection = Adw.PreferencesGroup(
             title="Indexador Wazuh",
@@ -128,12 +136,13 @@ class ReportWindow(Adw.ApplicationWindow):
     def _start(self, *_args):
         try:
             customer = validate_customer(self.customer.get_text())
+            hours = self.period_hours[self.time_range.get_selected()]
             server = indexer_url(self.server_ip.get_text(), self.server_port.get_text())
             folder_text = self.output_folder.get_text().strip()
             if not folder_text:
                 raise ValueError("Informe a pasta de saída.")
             folder = Path(folder_text).expanduser()
-            args = (customer, server, self.username.get_text(),
+            args = (customer, hours, server, self.username.get_text(),
                     self.password.get_text(), self.verify_tls.get_active(), folder)
         except ValueError as error:
             self._show_error(str(error))
@@ -142,13 +151,14 @@ class ReportWindow(Adw.ApplicationWindow):
         self._validate()
         self.open_button.set_sensitive(False)
         self.spinner.start()
-        self.status.set_text("Consultando os alertas das últimas 24 horas…")
+        self.status.set_text(f"Consultando os alertas dos últimos {PERIODS[hours][0]}…")
         threading.Thread(target=self._work, args=args, daemon=True).start()
 
-    def _work(self, customer: str, server: str, username: str, password: str,
+    def _work(self, customer: str, hours: int, server: str, username: str, password: str,
               verify_tls: bool, folder: Path):
         try:
-            snapshot = fetch_summary(customer, server, username, password, verify_tls=verify_tls)
+            snapshot = fetch_summary(customer, server, username, password,
+                                     hours=hours, verify_tls=verify_tls)
             GLib.idle_add(self.status.set_text, "Gerando o PDF com gráficos e papel timbrado…")
             destination = folder / default_filename(customer, now=datetime.fromisoformat(snapshot["end_utc"]))
             render_report(snapshot, destination)

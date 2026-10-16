@@ -1,13 +1,14 @@
-# Relatório de eventos Wazuh — {{CLIENTE}}
+# Relatório de Segurança — {{CLIENTE}}
 
+**Período selecionado:** {{PERIODO_24H_7D_30D}}<br>
 **Período:** {{INICIO_LOCAL}} a {{FIM_LOCAL}} ({{FUSO}})  
-**Fonte:** {{INDEXADOR}}, índice `wazuh-alerts-*`  
+**Fonte:** indexador de alertas<br>
 **Filtro obrigatório:** `agent.labels.customer = {{CLIENTE}}` e `timestamp` entre {{INICIO_UTC}} (inclusive) e {{FIM_UTC}} (exclusive)  
 **Extraído em:** {{DATA_HORA_EXTRACAO}}
 
 ## Resumo executivo
 
-Foram encontrados **{{TOTAL}} alertas** com a tag do cliente. **{{NIVEL_10_MAIS}}** tiveram nível Wazuh 10 ou superior e **{{FALHAS_AUTENTICACAO}}** pertenciam ao grupo `authentication_failed`. {{SINTese_DOS_ACHADOS_E_IMPACTO_POTENCIAL}}
+Foram encontrados **{{TOTAL}} alertas** com a tag do cliente. **{{NIVEL_10_MAIS}}** tiveram nível 10 ou superior e **{{FALHAS_AUTENTICACAO}}** pertenciam ao grupo `authentication_failed`. {{SINTESE_DOS_ACHADOS_E_IMPACTO_POTENCIAL}}
 
 ## Principais indicadores
 
@@ -32,12 +33,12 @@ Foram encontrados **{{TOTAL}} alertas** com a tag do cliente. **{{NIVEL_10_MAIS}
 
 ## Tendência temporal
 
-{{VOLUME_POR_HORA_PICOS_E_COMPARACAO_COM_LINHA_DE_BASE}}
+{{VOLUME_POR_INTERVALO_PICOS_E_COMPARACAO_COM_LINHA_DE_BASE}}
 
-### Gráfico 1 — Volume por hora
+### Gráfico 1 — Volume por {{INTERVALO_DO_GRAFICO}}
 
-{{INSERIR_GRAFICO_DE_LINHA_COM_CONTAGEM_POR_HORA_NO_FUSO_LOCAL}}  
-**Dados:** `timestamp`, quantidade de alertas por hora. Marcar horas parciais.
+{{INSERIR_GRAFICO_DE_LINHA_COM_CONTAGEM_POR_INTERVALO_NO_FUSO_LOCAL}}<br>
+**Dados:** `timestamp`, quantidade de alertas por intervalo. Usar 1 hora para 24h, 6 horas para 7d e 1 dia para 30d. Marcar intervalos parciais.
 
 ### Gráfico 2 — Agentes com maior volume
 
@@ -56,7 +57,7 @@ Foram encontrados **{{TOTAL}} alertas** com a tag do cliente. **{{NIVEL_10_MAIS}
 
 ## Método e limitações
 
-Consulta OpenSearch/Wazuh Indexer:
+Consulta ao indexador de alertas:
 
 ```json
 {

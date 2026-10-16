@@ -34,6 +34,11 @@ DARK = colors.HexColor("#262626")
 MID = colors.HexColor("#626262")
 LIGHT = colors.HexColor("#f7f2ee")
 GRID = colors.HexColor("#dedede")
+PERIODS = {
+    24: ("24 horas", "1h", "hora"),
+    168: ("7 dias", "6h", "6 horas"),
+    720: ("30 dias", "1d", "dia"),
+}
 
 
 def validate_customer(customer: str) -> str:
@@ -61,9 +66,11 @@ def indexer_url(ip: str, port: str | int) -> str:
     return f"https://{host}:{port_number}"
 
 
-def query_body(customer: str, start: datetime, end: datetime) -> dict:
+def query_body(customer: str, start: datetime, end: datetime, hours: int = 24) -> dict:
     """Use an exact term filter for the customer on every aggregation."""
     customer = validate_customer(customer)
+    if hours not in PERIODS:
+        raise ValueError("Escolha um período de 24 horas, 7 dias ou 30 dias.")
     scope = [
         {"term": {"agent.labels.customer": customer}},
         {"range": {"timestamp": {"gte": start.isoformat(), "lt": end.isoformat()}}},
@@ -76,7 +83,11 @@ def query_body(customer: str, start: datetime, end: datetime) -> dict:
         "query": {"bool": {"filter": scope}},
         "aggs": {
             "by_level": {"terms": {"field": "rule.level", "size": 20}},
-            "by_hour": {"date_histogram": {"field": "timestamp", "fixed_interval": "1h", "min_doc_count": 0}},
+            "by_hour": {"date_histogram": {
+                "field": "timestamp", "fixed_interval": PERIODS[hours][1], "min_doc_count": 0,
+                "extended_bounds": {"min": start.isoformat(),
+                                    "max": (end - timedelta(microseconds=1)).isoformat()},
+            }},
             "by_agent": {"terms": {"field": "agent.id", "size": 30}, "aggs": {
                 "name": {"terms": {"field": "agent.name", "size": 1}},
             }},
@@ -112,11 +123,11 @@ def fetch_summary(
         raise ValueError("Use uma URL HTTPS para o indexador.")
     if not username.strip() or not password:
         raise ValueError("Informe o usuário e a senha do indexador.")
-    if not 1 <= hours <= 168:
-        raise ValueError("O período deve ter entre 1 e 168 horas.")
+    if hours not in PERIODS:
+        raise ValueError("Escolha um período de 24 horas, 7 dias ou 30 dias.")
     end = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     start = end - timedelta(hours=hours)
-    body = query_body(customer, start, end)
+    body = query_body(customer, start, end, hours)
     token = base64.b64encode(f"{username.strip()}:{password}".encode()).decode()
     request = urllib.request.Request(
         f"{base_url}/wazuh-alerts-*/_search",
@@ -126,7 +137,8 @@ def fetch_summary(
     )
     context = None if verify_tls else ssl._create_unverified_context()
     try:
-        with urllib.request.urlopen(request, context=context, timeout=60) as response:
+        with urllib.request.urlopen(request, context=context,
+                                    timeout={24: 60, 168: 180, 720: 300}[hours]) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 401:
@@ -189,7 +201,14 @@ def _agent_name(bucket: dict) -> str:
 
 
 def _safe(value: object) -> str:
-    return html.escape(str(value), quote=False)
+    return html.escape(_public_text(value), quote=False)
+
+
+def _public_text(value: object) -> str:
+    """Keep the collection platform's name out of customer-facing PDFs."""
+    neutral = re.sub(r"wazuh[-_ ]+agent\b", "agente de segurança", str(value),
+                     flags=re.IGNORECASE)
+    return re.sub(r"wazuh", "plataforma de segurança", neutral, flags=re.IGNORECASE)
 
 
 class BarChart(Flowable):
@@ -211,6 +230,7 @@ class BarChart(Flowable):
         label_width = 170
         plot_width = self.width - label_width - 50
         for index, (label, value) in enumerate(self.items):
+            label = _public_text(label)
             y = self.height - 18 - index * self.row
             c.setFont("ReportSans", 7.2)
             c.setFillColor(DARK)
@@ -225,10 +245,12 @@ class BarChart(Flowable):
             c.drawRightString(self.width, y, _number(value))
 
 
-class HourChart(Flowable):
-    def __init__(self, buckets: list[dict], *, width: float = 450, height: float = 150):
+class TrendChart(Flowable):
+    def __init__(self, buckets: list[dict], *, daily: bool = False,
+                 width: float = 450, height: float = 150):
         super().__init__()
         self.buckets = buckets
+        self.daily = daily
         self.width = width
         self.height = height
 
@@ -250,7 +272,7 @@ class HourChart(Flowable):
             c.line(left, y, self.width - 8, y)
             c.setFillColor(MID)
             c.setFont("ReportSans", 6.1)
-            c.drawRightString(left - 4, y - 2, f"{int(maximum * fraction / 1000)}k")
+            c.drawRightString(left - 4, y - 2, _number(round(maximum * fraction)))
         denominator = max(1, len(values) - 1)
         points = [(left + plot_width * i / denominator, bottom + plot_height * value / maximum)
                   for i, value in enumerate(values)]
@@ -263,7 +285,8 @@ class HourChart(Flowable):
             stamp = datetime.fromtimestamp(self.buckets[index]["key"] / 1000, timezone.utc).astimezone(LOCAL_TZ)
             c.setFont("ReportSans", 6.1)
             c.setFillColor(MID)
-            c.drawCentredString(points[index][0], 7, stamp.strftime("%d/%m %Hh"))
+            c.drawCentredString(points[index][0], 7,
+                                stamp.strftime("%d/%m" if self.daily else "%d/%m %Hh"))
 
 
 def _table(rows: list[list[str]], widths: list[int], styles: dict) -> Table:
@@ -295,7 +318,10 @@ def _story(snapshot: dict) -> list:
     styles = _styles()
     P = lambda text, style="body": Paragraph(text, styles[style])
     customer = snapshot["customer"]
-    index_name = snapshot.get("index", "wazuh-alerts-*")
+    hours = snapshot.get("hours", 24)
+    if hours not in PERIODS:
+        raise ValueError("Período do relatório inválido.")
+    range_label, _, bucket_label = PERIODS[hours]
     result = snapshot["result"]
     aggregations = result["aggregations"]
     total = result["hits"]["total"]["value"]
@@ -307,7 +333,8 @@ def _story(snapshot: dict) -> list:
     failed_agents = aggregations["failed_auth"]["agents"]["buckets"]
     start = datetime.fromisoformat(snapshot["start_utc"]).astimezone(LOCAL_TZ)
     end = datetime.fromisoformat(snapshot["end_utc"]).astimezone(LOCAL_TZ)
-    period = f"{start:%d/%m/%Y %H:%M} a {end:%d/%m/%Y %H:%M} | Horário de Recife | Confidencial"
+    period = (f"Últimos {range_label} | {start:%d/%m/%Y %H:%M} a {end:%d/%m/%Y %H:%M} "
+              "| Horário de Recife | Confidencial")
     top_agent = _agent_name(agents[0]) if agents else "—"
     top_agent_count = agents[0]["doc_count"] if agents else 0
     top_rule = rules[0] if rules else None
@@ -320,8 +347,8 @@ def _story(snapshot: dict) -> list:
     story = [
         P(f"Relatório de Segurança {_safe(customer)}", "title"),
         P(period, "subtitle"),
-        P(f"<b>Escopo:</b> somente alertas com <b>agent.labels.customer = {_safe(customer)}</b> em "
-          f"<b>{_safe(index_name)}</b>, pelo campo timestamp.", "small"),
+        P(f"<b>Escopo:</b> somente alertas com <b>agent.labels.customer = {_safe(customer)}</b> "
+          "no período selecionado, pelo campo timestamp.", "small"),
         P("Resumo executivo", "h1"),
         P(f"Foram encontrados <b>{_number(total)} alertas</b>. O agente {_safe(top_agent)} concentrou "
           f"{_number(top_agent_count)} ({share_agent}%) e a regra {_safe(top_rule['key']) if top_rule else '—'} "
@@ -331,9 +358,10 @@ def _story(snapshot: dict) -> list:
         _table([["Indicador", "Quantidade"], [f"Alertas {_safe(customer)}", _number(total)],
                 ["Nível 10 ou superior", _number(high)], ["Falhas de autenticação", _number(failures)]],
                [320, 130], styles),
-        P("Volume de alertas por hora", "h1"),
-        HourChart(aggregations["by_hour"]["buckets"]),
-        P("Horas no fuso de Recife. A primeira e a última hora podem ser parciais; o gráfico mostra alertas sem deduplicação.", "caption"),
+        P(f"Volume de alertas por {bucket_label}", "h1"),
+        TrendChart(aggregations["by_hour"]["buckets"], daily=hours == 720),
+        P(f"Intervalos de {bucket_label} no fuso de Recife. O primeiro e o último intervalo "
+          "podem ser parciais; o gráfico mostra alertas sem deduplicação.", "caption"),
         P("Pontos para triagem", "h1"),
     ]
     if top_priority:
@@ -358,7 +386,7 @@ def _story(snapshot: dict) -> list:
         P("Falhas de autenticação por agente", "h1"),
         BarChart([(item["key"], item["doc_count"]) for item in failed_agents[:5]]),
         PageBreak(), P("Alertas prioritários", "title"),
-        P("Regras com nível Wazuh 10 ou superior no intervalo analisado.", "subtitle"),
+        P("Regras com nível 10 ou superior no intervalo analisado.", "subtitle"),
         BarChart([(f"{item['key']}  {_description(item)}", item["doc_count"]) for item in high_rules[:7]], row=22),
         P("Achados de maior severidade", "h1"),
     ]
@@ -373,7 +401,7 @@ def _story(snapshot: dict) -> list:
         P("2. Investigar as falhas de autenticação por origem e conta, verificando se houve sucesso posterior e se há repetição de tentativas.", "small"),
         P("3. Confirmar a saúde da coleta e a cobertura dos agentes antes de concluir sobre ausência ou concentração de atividade.", "small"),
         P("Método e limitações", "h1"),
-        P(f"Consulta ao índice {_safe(index_name)} com filtro exato "
+        P(f"Consulta ao índice de alertas com filtro exato "
           f"agent.labels.customer = {_safe(customer)} e timestamp de "
           f"{_safe(snapshot['start_utc'])} (inclusive) a {_safe(snapshot['end_utc'])} (exclusive). "
           "O indexador confirmou total exato, sem timeout ou falha de shard. Regras correlacionadas podem emitir "
@@ -393,14 +421,14 @@ def render_report(snapshot: dict, destination: Path | str) -> Path:
         overlay_path = Path(temp_dir) / "content.pdf"
         document = SimpleDocTemplate(str(overlay_path), pagesize=(595.28, 841.89),
                                      leftMargin=73, rightMargin=72, topMargin=113,
-                                     bottomMargin=145, title=f"Relatório de Segurança {snapshot['customer']}")
+                                     bottomMargin=145, title=f"Relatório de Segurança {_public_text(snapshot['customer'])}")
         document.build(_story(snapshot), onFirstPage=_page_chrome, onLaterPages=_page_chrome)
         content = PdfReader(str(overlay_path))
         writer = PdfWriter()
         for content_page in content.pages:
             writer.add_page(PdfReader(str(LETTERHEAD)).pages[0])
             writer.pages[-1].merge_page(content_page)
-        writer.add_metadata({"/Title": f"Relatório de Segurança {snapshot['customer']}",
+        writer.add_metadata({"/Title": f"Relatório de Segurança {_public_text(snapshot['customer'])}",
                              "/Author": "HostDime Brasil"})
         temporary_destination = destination.with_suffix(".pdf.tmp")
         try:
