@@ -14,6 +14,8 @@ docker compose run --rm app flask --app web.app:create_app user-set operador --c
 docker compose up -d
 ```
 
+**Portainer:** use `compose.portainer.yaml` após importar as duas imagens ou construí-las no host. O script `./deploy/build_portainer_images.sh` prepara o pacote de importação. Veja o guia acima; o repositório deve continuar privado.
+
 Nenhuma conta ou senha padrão é criada. As credenciais do indexador são informadas por geração e não são persistidas.
 
 ## Instalar os pacotes

@@ -23,30 +23,62 @@ Acesse `https://<REPORT_DOMAIN>`. Caddy emite e renova o certificado HTTPS autom
 
 ### Portainer — Docker Standalone
 
-Na área **Stacks → Add stack**, selecione **Repository** e configure:
+**O repositório deve permanecer privado.** O erro `no image specified` ocorre quando a implantação exige `image:` e não constrói os Dockerfiles. A autenticação Git permite ler o código; ela não constrói nem disponibiliza uma imagem Docker.
 
-- **Repository URL:** `https://github.com/mcdalbu/wazuh-security-reports`.
-- Habilite a autenticação do repositório privado usando uma credencial GitHub com acesso de leitura a esse repositório. Não inclua o token na URL.
-- **Repository reference:** `refs/heads/main`.
-- **Compose path:** `compose.yaml`.
-- Em **Environment variables**, preencha `REPORT_DOMAIN` (somente o domínio, sem `https://`), `INDEXER_ENDPOINTS` (URL HTTPS com o IP e a porta autorizados) e, opcionalmente, `RETENTION_HOURS` (padrão `24`).
-- Implante a stack. Os Dockerfiles da aplicação e do proxy estão no repositório; a construção requer acesso às imagens oficiais e aos repositórios de pacotes.
+Use **`compose.portainer.yaml`** no Portainer. Esse arquivo contém somente referências `image:`, sem `build:`, e preserva autenticação, HTTPS, limites de recursos e volumes. As imagens precisam existir no mesmo Docker Engine do ambiente selecionado antes de implantar.
 
-O arquivo usa `deploy.resources.limits` para memória, CPU e processos, evitando os campos `mem_limit`, `cpus` e `pids_limit` no nível do serviço que alguns validadores do Portainer recusam. Use Docker Compose v2 atualizado no ambiente Standalone. O `depends_on` usa o formato de lista para compatibilidade com validadores antigos. Esse formato determina a ordem de início, sem esperar o healthcheck: o proxy pode responder temporariamente com erro 502 enquanto a aplicação inicia; tente novamente após alguns segundos.
+#### 1. Disponibilizar as imagens
 
-Se a stack já existir, atualize a referência Git e use **Pull and redeploy** para carregar o Compose corrigido. Preserve os volumes existentes.
+Você pode importar o arquivo Docker de imagens fornecido com a entrega em **Images → Import → Select file → Upload**. O pacote contém aplicação e proxy; após importar, confirme que ambas aparecem na lista:
 
-Depois da implantação, abra **Containers → contêiner do serviço app → Console**, conecte com `/bin/sh` e execute:
+- `localhost/wazuh-security-reports-app:0.4.0`
+- `localhost/wazuh-security-reports-proxy:0.4.0`
+
+Use o pacote compatível com a arquitetura do servidor. O arquivo pré-construído `amd64` é para Linux x86-64. Não habilite **Re-pull image / Always pull images** para imagens importadas localmente: elas não foram publicadas no Docker Hub.
+
+Para reconstruir em uma máquina com Docker, com o repositório privado já clonado:
+
+```bash
+./deploy/build_portainer_images.sh
+```
+
+O script gera `output/containers/wazuh-security-reports-0.4.0-<arquitetura>.tar.gz` e seu checksum. Não envia nada para um registry. Se executar no próprio host do Portainer, as imagens também ficam prontas no Docker local, sem precisar importar o arquivo. Se executar em outra máquina, importe o arquivo no ambiente correto do Portainer. Pela CLI, use `docker load -i arquivo.tar.gz` (não `docker import`).
+
+Como alternativa, publique as duas imagens em um **registry privado**, configure sua autenticação em **Registries** no Portainer e defina `APP_IMAGE` e `PROXY_IMAGE` com as referências completas. A imagem da aplicação contém o papel timbrado confidencial: não torne o registry público. Credenciais de registry são distintas da autenticação Git.
+
+#### 2. Implantar a stack
+
+Na área **Stacks → Add stack**, você pode:
+
+- Usar **Web editor** e colar todo o conteúdo de `compose.portainer.yaml`; ou
+- Selecionar **Repository**, informar `https://github.com/mcdalbu/wazuh-security-reports`, habilitar autenticação com uma credencial de leitura do repositório privado, usar referência `refs/heads/main` e **Compose path: `compose.portainer.yaml`**. Não inclua o token na URL.
+
+Em **Environment variables**, preencha:
+
+| Variável | Valor |
+| --- | --- |
+| `REPORT_DOMAIN` | Domínio real do portal, sem `https://` nem barra final |
+| `INDEXER_ENDPOINTS` | URL HTTPS com o IP e porta autorizados, por exemplo `https://192.0.2.10:9200` |
+| `RETENTION_HOURS` | Opcional, padrão `24` |
+| `APP_IMAGE` / `PROXY_IMAGE` | Opcionais; mantenha os padrões para as imagens importadas |
+
+Implante a stack após confirmar as imagens. Para atualizar uma stack existente, preserve o mesmo nome e os volumes; altere o Compose path, carregue o arquivo atualizado e desative a opção de baixar novamente as imagens quando elas forem locais.
+
+Os limites usam `deploy.resources.limits`, e `depends_on` usa lista para compatibilidade com o parser observado. A lista determina a ordem de início, sem esperar o healthcheck: o proxy pode responder temporariamente com 502 enquanto a aplicação inicia; tente novamente após alguns segundos.
+
+#### 3. Criar a conta do portal
+
+Abra **Containers → contêiner do serviço app → Console**, conecte com `/bin/sh` e execute:
 
 ```sh
 flask --app web.app:create_app user-set operador --customer HDBR --customer ARMAZEM_PB
 ```
 
-A senha será solicitada no console, sem eco. Acesse então `https://<REPORT_DOMAIN>`.
+A senha será solicitada sem eco. Acesse então `https://<REPORT_DOMAIN>`.
 
-O editor web da stack recebe somente o YAML; ele não fornece o código usado por `build: .`. Para usar **Web editor**, primeiro construa as duas imagens no mesmo Docker Engine, ou publique-as em um registry privado, e substitua cada `build` por seu `image` correspondente. Em ambientes via Portainer Agent que não suportem build, use também imagens previamente construídas. Não publique as imagens em registry público: elas contêm o papel timbrado confidencial.
+Se usar CA privada do indexador, o arquivo PEM descrito abaixo deve existir no host do Docker e ser montado com caminho absoluto. Acrescente `SSL_CERT_FILE` e o volume ao Compose da stack; arquivos da máquina com o navegador não ficam automaticamente disponíveis no servidor.
 
-Se usar a CA privada descrita abaixo, o arquivo PEM deve existir no host do Docker e ser montado com caminho absoluto; o arquivo local da máquina com o navegador não fica disponível no servidor. Acrescente a variável `SSL_CERT_FILE` e o volume ao Compose usado pela stack.
+Referências: [importar imagens no Portainer](https://docs.portainer.io/user/docker/images/import) e [configurar uma stack](https://docs.portainer.io/sts/user/docker/stacks/add).
 
 ### CA privada do indexador
 
