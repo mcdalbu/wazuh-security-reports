@@ -29,7 +29,9 @@ Use **`compose.portainer.yaml`** no Portainer. Esse arquivo contém somente refe
 
 #### Portas HTTP 8083 e HTTPS 8443 — 0.4.3
 
-Para rede interna/VPN com essas portas, use **`compose.portainer.ip.yaml`**. Preencha `REPORT_DOMAIN` com o IP do portal (sem protocolo nem porta). Esse arquivo publica `8083:8080` e `8443:8443`, configura a origem da aplicação como `https://<IP>:8443` e informa `REPORT_HTTPS_PORT=8443` ao proxy. O HTTP em `http://<IP>:8083` redireciona para `https://<IP>:8443`, preservando o caminho e a consulta. O login é servido por HTTPS.
+Para essas portas, use **`compose.portainer.ip.yaml`**. Nenhum IP é fixado no YAML ou nas imagens. Preencha `REPORT_DOMAIN` no Portainer com o DNS ou IP pelo qual o navegador alcança o host Docker que executa a aplicação (sem protocolo nem porta). Esse endereço não é necessariamente o endereço do painel Portainer. Esse arquivo publica `8083:8080` e `8443:8443`, configura a origem da aplicação como `https://<REPORT_DOMAIN>:8443` e informa `REPORT_HTTPS_PORT=8443` ao proxy. O HTTP em `http://<REPORT_DOMAIN>:8083` redireciona para `https://<REPORT_DOMAIN>:8443`, preservando o caminho e a consulta. O login é servido por HTTPS.
+
+O endereço é fornecido somente na implantação: `REPORT_DOMAIN`, `INDEXER_ENDPOINTS` e, opcionalmente, `RETENTION_HOURS`. O endereço precisa ser configurado para emitir o certificado correspondente, validar o Host e verificar a origem dos formulários de login. Não é inferido de cabeçalhos enviados livremente pelo cliente. As mesmas imagens **0.4.3** podem ser reutilizadas em outro servidor, alterando apenas as variáveis.
 
 Importe as imagens **0.4.3** antes da atualização. Se usar `APP_IMAGE`/`PROXY_IMAGE`, atualize as tags ou remova os valores antigos. Preserve os volumes: a CA existente continua válida, pois certificados identificam o IP, não a porta. A instalação da CA nos clientes descrita abaixo continua necessária se ainda não foi feita.
 

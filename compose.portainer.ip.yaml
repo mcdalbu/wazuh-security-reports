@@ -1,11 +1,11 @@
-# Private/VPN access: HTTP :8083 redirects to HTTPS :8443. Set REPORT_DOMAIN to the portal IP.
+# Application access: HTTP :8083 redirects to HTTPS :8443. REPORT_DOMAIN is the application host (DNS or IP), configured at deployment.
 # Portainer Standalone: import the images first, or set APP_IMAGE/PROXY_IMAGE to private registry references.
 services:
   app:
     image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.3}
     restart: unless-stopped
     environment:
-      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Informe o IP do portal}:8443
+      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Informe o DNS ou IP do host da aplicacao}:8443
       INDEXER_ENDPOINTS: ${INDEXER_ENDPOINTS:?Defina INDEXER_ENDPOINTS no .env}
       TRUST_PROXY: '1'
       RETENTION_HOURS: ${RETENTION_HOURS:-24}
