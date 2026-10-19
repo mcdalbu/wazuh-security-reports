@@ -1,0 +1,4 @@
+FROM docker.io/library/caddy:2.11-alpine
+RUN mkdir -p /data /config && chown -R 10001:10001 /data /config
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+USER 10001:10001

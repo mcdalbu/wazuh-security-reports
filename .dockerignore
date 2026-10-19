@@ -1,0 +1,14 @@
+# Allowlist: never send customer reports, credentials, Git history or packages to the builder.
+**
+!Dockerfile
+!requirements-web.txt
+!wazuh_report.py
+!assets/
+!assets/timbrado_confidencial.pdf
+!web/
+!web/**
+web/**/__pycache__/
+web/**/*.pyc
+!deploy/
+!deploy/Dockerfile.proxy
+!deploy/Caddyfile

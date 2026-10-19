@@ -1,6 +1,20 @@
 # Relatórios de Segurança Wazuh
 
-Aplicação GTK4/libadwaita para gerar um relatório PDF por cliente. A janela recebe o valor exato de `agent.labels.customer`, consulta `wazuh-alerts-*` nas últimas 24 horas, 7 dias ou 30 dias e gera o PDF no papel timbrado confidencial com gráficos de tendência, agentes e regras de maior severidade. O nome do produto de coleta não aparece no conteúdo do PDF.
+Aplicações web (Docker) e GTK4/libadwaita para gerar um relatório PDF por cliente. A janela recebe o valor exato de `agent.labels.customer`, consulta `wazuh-alerts-*` nas últimas 24 horas, 7 dias ou 30 dias e gera o PDF no papel timbrado confidencial com gráficos de tendência, agentes e regras de maior severidade. O nome do produto de coleta não aparece no conteúdo do PDF.
+
+## Versão web em Docker
+
+Portal com login individual, permissões por cliente, HTTPS, geração e download privado dos PDFs. A configuração completa, criação de contas e certificados estão no [guia de implantação](deploy/README.md).
+
+```bash
+cp deploy/env.example .env
+# Ajuste domínio e destinos permitidos no .env
+docker compose build
+docker compose run --rm app flask --app web.app:create_app user-set operador --customer HDBR
+docker compose up -d
+```
+
+Nenhuma conta ou senha padrão é criada. As credenciais do indexador são informadas por geração e não são persistidas.
 
 ## Instalar os pacotes
 

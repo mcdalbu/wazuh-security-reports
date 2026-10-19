@@ -104,6 +104,21 @@ class ReportTests(unittest.TestCase):
                 self.assertIn({'range': {'rule.level': {'gte': 12, 'lte': 15}}}, priority_filters)
                 self.assertEqual(snapshot["hours"], hours)
 
+    def test_web_transport_refuses_credential_forwarding_on_redirect(self):
+        import urllib.error
+        import urllib.request
+        from unittest.mock import Mock
+        opener = Mock()
+        opener.open.return_value = io.BytesIO(json.dumps(sample_snapshot()['result']).encode())
+        with patch('urllib.request.build_opener', return_value=opener) as build:
+            fetch_summary('CLIENTE_TESTE', 'https://192.0.2.10:9200', 'reader', 'secret',
+                          verify_tls=True, reject_redirects=True)
+        handlers = build.call_args.args
+        reject = next(handler for handler in handlers if isinstance(handler, urllib.request.HTTPRedirectHandler))
+        req = urllib.request.Request('https://192.0.2.10:9200', headers={'Authorization': 'Basic TEST'})
+        with self.assertRaises(urllib.error.HTTPError):
+            reject.redirect_request(req, None, 302, 'Found', {}, 'https://other.example')
+
     def test_small_nonzero_shares_remain_visible(self):
         self.assertEqual(_percent(409, 1966492), "0,02%")
         self.assertEqual(_percent(1, 1966492), "menos de 0,001%")

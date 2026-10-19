@@ -1,0 +1,54 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
+      INDEXER_ENDPOINTS: ${INDEXER_ENDPOINTS:?Defina INDEXER_ENDPOINTS no .env}
+      TRUST_PROXY: '1'
+      RETENTION_HOURS: ${RETENTION_HOURS:-24}
+      # For a private CA, see deploy/README.md; do not disable TLS validation.
+    volumes:
+      - reports_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m,uid=10001,gid=10001,mode=1700
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/healthz',headers={'Host':os.environ['PUBLIC_ORIGIN'].split('://')[1],'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  proxy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.proxy
+    restart: unless-stopped
+    environment:
+      REPORT_DOMAIN: ${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
+    ports:
+      - '80:8080'
+      - '443:8443'
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    user: '10001:10001'
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 128
+    depends_on:
+      app:
+        condition: service_healthy
+volumes:
+  reports_data:
+  caddy_data:
+  caddy_config:

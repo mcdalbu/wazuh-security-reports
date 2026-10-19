@@ -124,6 +124,7 @@ def fetch_summary(
     *,
     hours: int = 24,
     verify_tls: bool = False,
+    reject_redirects: bool = False,
     now: datetime | None = None,
 ) -> dict:
     customer = validate_customer(customer)
@@ -145,9 +146,20 @@ def fetch_summary(
         method="POST",
     )
     context = None if verify_tls else ssl._create_unverified_context()
+    class RejectRedirects(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise urllib.error.HTTPError(req.full_url, code, "Redirecionamento recusado", headers, fp)
+
+    def open_request():
+        timeout = {24: 60, 168: 180, 720: 300}[hours]
+        if reject_redirects:
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPSHandler(context=context), RejectRedirects())
+            return opener.open(request, timeout=timeout)
+        return urllib.request.urlopen(request, context=context, timeout=timeout)
+
     try:
-        with urllib.request.urlopen(request, context=context,
-                                    timeout={24: 60, 168: 180, 720: 300}[hours]) as response:
+        with open_request() as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 401:
