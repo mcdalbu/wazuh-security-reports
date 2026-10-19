@@ -27,12 +27,20 @@ Acesse `https://<REPORT_DOMAIN>`. Caddy emite e renova o certificado HTTPS autom
 
 Use **`compose.portainer.yaml`** no Portainer. Esse arquivo contém somente referências `image:`, sem `build:`, e preserva autenticação, HTTPS, limites de recursos e volumes. As imagens precisam existir no mesmo Docker Engine do ambiente selecionado antes de implantar.
 
+#### Atualização corretiva 0.4.1
+
+Esta versão remove a capability `cap_net_bind_service` do executável Caddy durante o build, pois o proxy já escuta internamente em 8080/8443. Isso corrige `exec /usr/bin/caddy: operation not permitted` em runtimes que removem as capabilities e não aplicam `no-new-privileges`.
+
+O `/tmp` agora é declarado como volume `type: tmpfs`, com modo `01777`, preservando a raiz somente leitura e permitindo escrita pelo UID 10001. O Gunicorn usa `/dev/shm` para seu arquivo de heartbeat. Isso evita o erro `Read-only file system: /tmp/wgunicorn-*` observado quando a montagem temporária anterior não foi aplicada pelo ambiente. A montagem `/tmp` é necessária também para a geração do PDF.
+
+Importe o pacote **0.4.1** e substitua o YAML completo da stack pelo `compose.portainer.yaml` atualizado. Se tiver definido `APP_IMAGE` ou `PROXY_IMAGE`, atualize também as tags dessas variáveis para `0.4.1`, ou remova-as para usar os novos padrões. Preserve o nome da stack, as variáveis de domínio/indexador e os volumes existentes. Não use `privileged`, não adicione capabilities e não desligue `read_only` para contornar os erros.
+
 #### 1. Disponibilizar as imagens
 
 Você pode importar o arquivo Docker de imagens fornecido com a entrega em **Images → Import → Select file → Upload**. O pacote contém aplicação e proxy; após importar, confirme que ambas aparecem na lista:
 
-- `localhost/wazuh-security-reports-app:0.4.0`
-- `localhost/wazuh-security-reports-proxy:0.4.0`
+- `localhost/wazuh-security-reports-app:0.4.1`
+- `localhost/wazuh-security-reports-proxy:0.4.1`
 
 Use o pacote compatível com a arquitetura do servidor. O arquivo pré-construído `amd64` é para Linux x86-64. Não habilite **Re-pull image / Always pull images** para imagens importadas localmente: elas não foram publicadas no Docker Hub.
 
@@ -42,7 +50,7 @@ Para reconstruir em uma máquina com Docker, com o repositório privado já clon
 ./deploy/build_portainer_images.sh
 ```
 
-O script gera `output/containers/wazuh-security-reports-0.4.0-<arquitetura>.tar.gz` e seu checksum. Não envia nada para um registry. Se executar no próprio host do Portainer, as imagens também ficam prontas no Docker local, sem precisar importar o arquivo. Se executar em outra máquina, importe o arquivo no ambiente correto do Portainer. Pela CLI, use `docker load -i arquivo.tar.gz` (não `docker import`).
+O script gera `output/containers/wazuh-security-reports-0.4.1-<arquitetura>.tar.gz` e seu checksum. Não envia nada para um registry. Se executar no próprio host do Portainer, as imagens também ficam prontas no Docker local, sem precisar importar o arquivo. Se executar em outra máquina, importe o arquivo no ambiente correto do Portainer. Pela CLI, use `docker load -i arquivo.tar.gz` (não `docker import`).
 
 Como alternativa, publique as duas imagens em um **registry privado**, configure sua autenticação em **Registries** no Portainer e defina `APP_IMAGE` e `PROXY_IMAGE` com as referências completas. A imagem da aplicação contém o papel timbrado confidencial: não torne o registry público. Credenciais de registry são distintas da autenticação Git.
 

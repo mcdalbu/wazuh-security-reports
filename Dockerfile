@@ -13,4 +13,4 @@ COPY web ./web
 USER 10001:10001
 EXPOSE 8000
 # One worker is intentional: PDF rendering is serialized with an in-process lock.
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "360", "--worker-tmp-dir", "/tmp", "web.app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "360", "--worker-tmp-dir", "/dev/shm", "web.app:create_app()"]

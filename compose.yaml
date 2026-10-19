@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.0}
+    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.1}
     build: .
     restart: unless-stopped
     environment:
@@ -11,9 +11,12 @@ services:
       # For a private CA, see deploy/README.md; do not disable TLS validation.
     volumes:
       - reports_data:/data
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 134217728
+          mode: 01777
     read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=128m,uid=10001,gid=10001,mode=1700
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     deploy:
@@ -29,7 +32,7 @@ services:
       retries: 3
       start_period: 20s
   proxy:
-    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.0}
+    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.1}
     build:
       context: .
       dockerfile: deploy/Dockerfile.proxy
@@ -42,10 +45,13 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 16777216
+          mode: 01777
     user: '10001:10001'
     read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=16m,uid=10001,gid=10001
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     deploy:

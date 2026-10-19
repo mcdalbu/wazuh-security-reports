@@ -1,4 +1,8 @@
 FROM docker.io/library/caddy:2.11-alpine
-RUN mkdir -p /data /config && chown -R 10001:10001 /data /config
+# Caddy binds to unprivileged internal ports; file capabilities can cause exec EPERM
+# when the runtime drops the bounding set (including when no-new-privileges is ignored).
+RUN setcap -r /usr/bin/caddy \
+    && test -z "$(getcap /usr/bin/caddy)" \
+    && mkdir -p /data /config && chown -R 10001:10001 /data /config
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 USER 10001:10001
