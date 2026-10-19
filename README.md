@@ -2,23 +2,24 @@
 
 Aplicações web (Docker) e GTK4/libadwaita para gerar um relatório PDF por cliente. A janela recebe o valor exato de `agent.labels.customer`, consulta `wazuh-alerts-*` nas últimas 24 horas, 7 dias ou 30 dias e gera o PDF no papel timbrado confidencial com gráficos de tendência, agentes e regras de maior severidade. O nome do produto de coleta não aparece no conteúdo do PDF.
 
-## Versão web em Docker
+## Versão web com Docker Compose
 
-Portal com login individual, permissões por cliente, HTTPS, geração e download privado dos PDFs. A configuração completa, criação de contas e certificados estão no [guia de implantação](deploy/README.md).
+Portal com login individual, permissões por cliente, HTTPS e download privado dos PDFs. A implantação usa **Docker Compose v2 / Docker Standalone**, com HTTP em **8083** redirecionando para HTTPS em **8443**.
 
 ```bash
 cp deploy/env.example .env
-# Ajuste domínio e destinos permitidos no .env
-docker compose build
-docker compose run --rm app flask --app web.app:create_app user-set operador --customer HDBR
-docker compose up -d
+# Preencha REPORT_DOMAIN (host da aplicação) e INDEXER_ENDPOINTS
+docker compose -p reports config --quiet
+docker compose -p reports build
+docker compose -p reports run --rm app flask --app web.app:create_app user-set operador --customer HDBR
+docker compose -p reports up -d
 ```
 
-**Portainer:** use `compose.portainer.yaml` após importar as duas imagens ou construí-las no host. O script `./deploy/build_portainer_images.sh` prepara o pacote de importação. Veja o guia acima; o repositório deve continuar privado.
+Abra `https://<REPORT_DOMAIN>:8443`. Nenhum IP é fixado no código ou nas imagens. Para rede interna/VPN, instale a CA do proxy nos dispositivos clientes, conforme o [guia de implantação](deploy/README.md).
 
-Para acesso por IP na rede interna/VPN, configure `REPORT_DOMAIN` com o IP do portal e instale a CA interna do proxy nos dispositivos clientes, conforme o guia de implantação. Para HTTP em 8083 e HTTPS em 8443, use `compose.portainer.ip.yaml` e configure `REPORT_DOMAIN` no Portainer com o DNS ou IP do host da aplicação. Nenhum IP é fixado no arquivo ou nas imagens.
+**Portainer:** selecione um ambiente **Docker Standalone** e use `compose.portainer.yaml` com as imagens privadas `0.4.3` já importadas. O script `./deploy/build_portainer_images.sh` prepara o pacote de importação. O repositório deve continuar privado.
 
-Nenhuma conta ou senha padrão é criada. As credenciais do indexador são informadas por geração e não são persistidas.
+Não há usuário ou senha padrão. As credenciais do indexador são usadas apenas durante a geração. O guia também descreve migração com preservação dos volumes, criação de contas, certificados e comandos de manutenção.
 
 ## Instalar os pacotes
 

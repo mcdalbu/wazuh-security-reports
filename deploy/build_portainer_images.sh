@@ -15,4 +15,4 @@ docker save "$app_image" "$proxy_image" | gzip -1 > "$temporary_archive"
 mv -- "$temporary_archive" "$archive"
 (cd "$artifact_dir" && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
 printf 'Importe este arquivo em Portainer > Images > Import: %s\n' "$archive"
-printf 'Use compose.portainer.yaml (80/443) ou compose.portainer.ip.yaml (8083/8443). Desative Re-pull/Always pull images.\n'
+printf 'Use compose.portainer.yaml em Docker Standalone (HTTP 8083 / HTTPS 8443). Desative Re-pull/Always pull images.\n'

@@ -1,11 +1,10 @@
-# Application access: HTTP :8083 redirects to HTTPS :8443. REPORT_DOMAIN is the application host (DNS or IP), configured at deployment.
-# Portainer Standalone: import the images first, or set APP_IMAGE/PROXY_IMAGE to private registry references.
+# Compatibility alias for compose.portainer.yaml: same Docker Standalone configuration and 8083/8443 ports.
 services:
   app:
     image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.3}
     restart: unless-stopped
     environment:
-      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Informe o DNS ou IP do host da aplicacao}:8443
+      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Configure o host da aplicacao no .env}:8443
       INDEXER_ENDPOINTS: ${INDEXER_ENDPOINTS:?Defina INDEXER_ENDPOINTS no .env}
       TRUST_PROXY: '1'
       RETENTION_HOURS: ${RETENTION_HOURS:-24}
@@ -20,12 +19,9 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: "2.0"
-          pids: 128
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 128
     healthcheck:
       test: [CMD, python, -c, "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/healthz',headers={'Host':os.environ['PUBLIC_ORIGIN'].split('://')[1],'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=5)"]
       interval: 30s
@@ -53,13 +49,11 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          pids: 128
+    mem_limit: 256m
+    pids_limit: 128
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 volumes:
   reports_data:
   caddy_data:

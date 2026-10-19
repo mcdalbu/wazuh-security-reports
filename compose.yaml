@@ -1,10 +1,11 @@
+# Docker Compose v2 / Docker Standalone. HTTP 8083 redirects to HTTPS 8443.
 services:
   app:
     image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.3}
     build: .
     restart: unless-stopped
     environment:
-      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
+      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Configure o host da aplicacao no .env}:8443
       INDEXER_ENDPOINTS: ${INDEXER_ENDPOINTS:?Defina INDEXER_ENDPOINTS no .env}
       TRUST_PROXY: '1'
       RETENTION_HOURS: ${RETENTION_HOURS:-24}
@@ -19,12 +20,9 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: "2.0"
-          pids: 128
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 128
     healthcheck:
       test: [CMD, python, -c, "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/healthz',headers={'Host':os.environ['PUBLIC_ORIGIN'].split('://')[1],'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=5)"]
       interval: 30s
@@ -39,10 +37,10 @@ services:
     restart: unless-stopped
     environment:
       REPORT_DOMAIN: ${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
-      REPORT_HTTPS_PORT: ${REPORT_HTTPS_PORT:-443}
+      REPORT_HTTPS_PORT: "8443"
     ports:
-      - '80:8080'
-      - '443:8443'
+      - '8083:8080'
+      - '8443:8443'
     volumes:
       - caddy_data:/data
       - caddy_config:/config
@@ -55,13 +53,11 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          pids: 128
+    mem_limit: 256m
+    pids_limit: 128
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 volumes:
   reports_data:
   caddy_data:

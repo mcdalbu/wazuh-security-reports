@@ -1,124 +1,99 @@
-# Portal web em Docker
+# Portal web — Docker Compose / Docker Standalone
 
-A versão web reutiliza o gerador de PDFs e o papel timbrado do aplicativo desktop. Permite escolher o cliente, 24h/7d/30d, IP, porta e credenciais do indexador. Mantém gráficos, EPS médio de alertas e severidades por categoria. Os dados consultados e as credenciais ficam somente na memória durante a geração. O PDF e seus metadados ficam em um volume privado.
+A implantação usa **Docker Compose v2** em um único Docker Engine. O projeto Compose é chamado `reports`, com aplicação, proxy Caddy e volumes persistentes. HTTP é publicado em **8083** e redireciona para HTTPS em **8443**. O endereço da aplicação é configurado na implantação; nenhum IP é fixado no código, no YAML ou nas imagens.
 
-## Implantar
+## Executar a partir do código
 
-Requer Docker Engine com Compose v2, portas TCP 80/443 disponíveis no servidor e acesso de rede ao indexador. Para HTTPS público, use um domínio com DNS apontando para o servidor; para rede interna/VPN, use um IP privado e a CA interna conforme a seção de acesso por IP. Use um servidor administrado e restrinja o acesso à rede de operação quando possível.
+Requisitos: Docker Engine com Compose v2, acesso à rede do indexador e portas 8083/8443 disponíveis no host da aplicação. O repositório e as imagens devem continuar privados porque incluem o papel timbrado confidencial.
+
+Na pasta do repositório já clonado:
 
 ```bash
 cp deploy/env.example .env
 # Edite .env: REPORT_DOMAIN e INDEXER_ENDPOINTS
 chmod 600 .env
-docker compose build
-docker compose run --rm app flask --app web.app:create_app user-set operador --customer HDBR --customer ARMAZEM_PB
-docker compose up -d
+docker compose -p reports config --quiet
+docker compose -p reports build
+docker compose -p reports run --rm app flask --app web.app:create_app user-set operador --customer HDBR --customer ARMAZEM_PB
+docker compose -p reports up -d
+docker compose -p reports ps
 ```
 
-A senha é solicitada interativamente, com confirmação, e deve conter entre 15 e 128 caracteres. Não há conta nem senha padrão. Não passe senhas em argumentos de linha de comando ou no `.env`.
+A conta é criada com senha interativa de 15 a 128 caracteres. Não há usuário ou senha padrão. As contas do portal são independentes das credenciais do indexador.
 
-Acesse `https://<REPORT_DOMAIN>`. Caddy emite e renova o certificado HTTPS automaticamente quando DNS e acesso às portas estão corretos. Para ambiente interno sem domínio público, configure um certificado corporativo no Caddy ou `tls internal` e distribua a CA aos navegadores; não ignore avisos de certificado. O domínio também precisa coincidir com `PUBLIC_ORIGIN`.
+| Variável | Configuração |
+| --- | --- |
+| `REPORT_DOMAIN` | DNS ou IP pelo qual o navegador alcança o **host da aplicação**, sem protocolo nem porta. Não é necessariamente o IP do painel Portainer. |
+| `INDEXER_ENDPOINTS` | URL HTTPS com IP literal e porta autorizados; múltiplas URLs separadas por vírgula. Exemplo: `https://192.0.2.10:9200`. |
+| `RETENTION_HOURS` | Retenção dos PDFs, padrão `24`, entre 1 e 720 horas. |
+| `APP_IMAGE` / `PROXY_IMAGE` | Opcionais; as imagens locais padrão são `localhost/wazuh-security-reports-app:0.4.3` e `localhost/wazuh-security-reports-proxy:0.4.3`. |
 
-`INDEXER_ENDPOINTS` contém a lista de URLs permitidas, por exemplo `https://192.0.2.10:9200`; aceita múltiplas separadas por vírgula. Use o IP real e a porta da sua instalação. A interface só consulta os destinos dessa lista, sem resolver nomes externos e sem seguir redirecionamentos. A porta da aplicação não é publicada: o único acesso externo passa pelo proxy HTTPS.
+Acesse **`https://<REPORT_DOMAIN>:8443`**. `http://<REPORT_DOMAIN>:8083` redireciona para esse endereço, preservando caminho e parâmetros. O login é servido por HTTPS. A origem exata usada pela aplicação é `https://<REPORT_DOMAIN>:8443`, para validar o Host e a origem dos formulários.
 
-### Portainer — Docker Standalone
+Os arquivos usam `mem_limit`, `cpus`, `pids_limit`, `restart` e `depends_on.condition: service_healthy` do Docker Compose. O proxy inicia após o backend ficar saudável. A porta 8000 do backend não é publicada. A raiz dos contêineres permanece somente leitura; `/tmp` é um volume tmpfs gravável e o Gunicorn usa `/dev/shm` para o heartbeat. Ambos os serviços usam UID 10001, sem capabilities e com `no-new-privileges`.
 
-**O repositório deve permanecer privado.** O erro `no image specified` ocorre quando a implantação exige `image:` e não constrói os Dockerfiles. A autenticação Git permite ler o código; ela não constrói nem disponibiliza uma imagem Docker.
+## Portainer com Docker Standalone
 
-Use **`compose.portainer.yaml`** no Portainer. Esse arquivo contém somente referências `image:`, sem `build:`, e preserva autenticação, HTTPS, limites de recursos e volumes. As imagens precisam existir no mesmo Docker Engine do ambiente selecionado antes de implantar.
+Selecione um ambiente **Docker Standalone** no Portainer antes de criar/atualizar a stack. O tipo do ambiente define o mecanismo de implantação; trocar apenas o conteúdo de um YAML não muda um ambiente Swarm para Standalone. O arquivo atual deve ser executado pelo Docker Compose. Não é necessário desativar o Swarm de um host para executar contêineres independentes com o comando `docker compose`.
 
-#### Portas HTTP 8083 e HTTPS 8443 — 0.4.3
+Use **`compose.portainer.yaml`**, que já possui `image:` e não exige build dentro do Portainer. `compose.portainer.ip.yaml` é mantido como alias de compatibilidade com a mesma configuração Standalone e portas 8083/8443.
 
-Para essas portas, use **`compose.portainer.ip.yaml`**. Nenhum IP é fixado no YAML ou nas imagens. Preencha `REPORT_DOMAIN` no Portainer com o DNS ou IP pelo qual o navegador alcança o host Docker que executa a aplicação (sem protocolo nem porta). Esse endereço não é necessariamente o endereço do painel Portainer. Esse arquivo publica `8083:8080` e `8443:8443`, configura a origem da aplicação como `https://<REPORT_DOMAIN>:8443` e informa `REPORT_HTTPS_PORT=8443` ao proxy. O HTTP em `http://<REPORT_DOMAIN>:8083` redireciona para `https://<REPORT_DOMAIN>:8443`, preservando o caminho e a consulta. O login é servido por HTTPS.
+### Disponibilizar as imagens
 
-O endereço é fornecido somente na implantação: `REPORT_DOMAIN`, `INDEXER_ENDPOINTS` e, opcionalmente, `RETENTION_HOURS`. O endereço precisa ser configurado para emitir o certificado correspondente, validar o Host e verificar a origem dos formulários de login. Não é inferido de cabeçalhos enviados livremente pelo cliente. As mesmas imagens **0.4.3** podem ser reutilizadas em outro servidor, alterando apenas as variáveis.
+Se as imagens 0.4.3 já estiverem importadas no mesmo Docker Engine, reutilize-as. Esta conversão de implantação não exige novas imagens.
 
-Importe as imagens **0.4.3** antes da atualização. Se usar `APP_IMAGE`/`PROXY_IMAGE`, atualize as tags ou remova os valores antigos. Preserve os volumes: a CA existente continua válida, pois certificados identificam o IP, não a porta. A instalação da CA nos clientes descrita abaixo continua necessária se ainda não foi feita.
-
-O `compose.portainer.yaml` padrão mantém portas externas 80/443. Para outras combinações, alinhe sempre três itens: portas publicadas, `PUBLIC_ORIGIN` da aplicação e `REPORT_HTTPS_PORT` do proxy. O Caddy usa um redirecionamento explícito para não perder a porta pública quando há mapeamento de portas no Docker.
-
-#### Acesso por IP na rede interna/VPN — 0.4.2
-
-Use as imagens `0.4.2` e configure `REPORT_DOMAIN` com o **IP do servidor Docker do portal**, sem protocolo ou porta (o nome histórico dessa variável também aceita IP). A aplicação usa `https://<IP>` como origem exata; abra o mesmo endereço no navegador. O IP do indexador continua separado em `INDEXER_ENDPOINTS`.
-
-Para IP privado, o Caddy gera automaticamente um certificado com sua CA interna; não precisa alcançar o Let's Encrypt nem abrir portas da rede interna para a Internet. O `default_sni` permite selecionar o certificado correto quando o navegador acessa por IP sem enviar SNI e o tráfego chega por NAT do Docker.
-
-O certificado da CA precisa ser confiável **em cada dispositivo/navegador que acessará o portal**. Após implantar, abra o Console do serviço `proxy` no Portainer com `/bin/sh` e execute:
-
-```sh
-cat /data/caddy/pki/authorities/local/root.crt
-```
-
-Salve o bloco completo de `-----BEGIN CERTIFICATE-----` até `-----END CERTIFICATE-----` como `reports-root-ca.crt` e importe-o nas autoridades certificadoras confiáveis do sistema/navegador. Confirme que o arquivo veio do seu próprio servidor. Exporte somente `root.crt`; nunca distribua `root.key`. Não ignore o aviso de certificado para fazer login. Reabra o navegador e acesse `https://<IP>` após instalar a CA.
-
-Preserve `caddy_data`: ele contém a CA, sua chave e os certificados. Se esse volume for recriado, será necessário distribuir a nova CA. A opção `skip_install_trust` evita tentar instalar a CA dentro do contêiner de raiz somente leitura; a confiança nos dispositivos clientes continua necessária.
-
-A versão mantém as correções de capabilities e temporários da `0.4.1`. Se usar `APP_IMAGE`/`PROXY_IMAGE`, atualize as tags para `0.4.3` ou remova as variáveis para aceitar os padrões atuais. Para nomes DNS públicos, permanece a emissão automática pública quando o DNS e as portas externas atendem aos requisitos.
-
-#### Atualização corretiva 0.4.1
-
-Esta versão remove a capability `cap_net_bind_service` do executável Caddy durante o build, pois o proxy já escuta internamente em 8080/8443. Isso corrige `exec /usr/bin/caddy: operation not permitted` em runtimes que removem as capabilities e não aplicam `no-new-privileges`.
-
-O `/tmp` agora é declarado como volume `type: tmpfs`, com modo `01777`, preservando a raiz somente leitura e permitindo escrita pelo UID 10001. O Gunicorn usa `/dev/shm` para seu arquivo de heartbeat. Isso evita o erro `Read-only file system: /tmp/wgunicorn-*` observado quando a montagem temporária anterior não foi aplicada pelo ambiente. A montagem `/tmp` é necessária também para a geração do PDF.
-
-Essas correções estão incluídas na versão atual **0.4.3**. Importe o pacote atual e substitua o YAML completo da stack pelo `compose.portainer.yaml` atualizado. Se tiver definido `APP_IMAGE` ou `PROXY_IMAGE`, atualize também as tags dessas variáveis para `0.4.2`, ou remova-as para usar os novos padrões. Preserve o nome da stack, as variáveis de domínio/indexador e os volumes existentes. Não use `privileged`, não adicione capabilities e não desligue `read_only` para contornar os erros.
-
-#### 1. Disponibilizar as imagens
-
-Você pode importar o arquivo Docker de imagens fornecido com a entrega em **Images → Import → Select file → Upload**. O pacote contém aplicação e proxy; após importar, confirme que ambas aparecem na lista:
-
-- `localhost/wazuh-security-reports-app:0.4.3`
-- `localhost/wazuh-security-reports-proxy:0.4.3`
-
-Use o pacote compatível com a arquitetura do servidor. O arquivo pré-construído `amd64` é para Linux x86-64. Não habilite **Re-pull image / Always pull images** para imagens importadas localmente: elas não foram publicadas no Docker Hub.
-
-Para reconstruir em uma máquina com Docker, com o repositório privado já clonado:
+Para prepará-las em uma máquina com Docker:
 
 ```bash
 ./deploy/build_portainer_images.sh
 ```
 
-O script gera `output/containers/wazuh-security-reports-0.4.3-<arquitetura>.tar.gz` e seu checksum. Não envia nada para um registry. Se executar no próprio host do Portainer, as imagens também ficam prontas no Docker local, sem precisar importar o arquivo. Se executar em outra máquina, importe o arquivo no ambiente correto do Portainer. Pela CLI, use `docker load -i arquivo.tar.gz` (não `docker import`).
+O script constrói aplicação e proxy e gera `output/containers/wazuh-security-reports-0.4.3-<arquitetura>.tar.gz` e seu checksum. Não envia nada a um registry. Se a construção for feita no próprio host da aplicação, as imagens já estarão no Docker local. Caso contrário, importe o pacote em **Images → Import** no ambiente Standalone selecionado, ou use:
 
-Como alternativa, publique as duas imagens em um **registry privado**, configure sua autenticação em **Registries** no Portainer e defina `APP_IMAGE` e `PROXY_IMAGE` com as referências completas. A imagem da aplicação contém o papel timbrado confidencial: não torne o registry público. Credenciais de registry são distintas da autenticação Git.
+```bash
+docker load -i arquivo.tar.gz
+```
 
-#### 2. Implantar a stack
+O pacote `amd64` é para Linux x86-64. Após importar, confirme as duas imagens na lista. Desative **Re-pull image / Always pull images** para imagens locais. Para um registry privado, configure suas credenciais em **Registries** e ajuste `APP_IMAGE`/`PROXY_IMAGE`; a autenticação Git é independente da autenticação de registry.
 
-Na área **Stacks → Add stack**, você pode:
+### Criar a stack
 
-- Usar **Web editor** e colar todo o conteúdo de `compose.portainer.yaml`; ou
-- Selecionar **Repository**, informar `https://github.com/mcdalbu/wazuh-security-reports`, habilitar autenticação com uma credencial de leitura do repositório privado, usar referência `refs/heads/main` e **Compose path: `compose.portainer.yaml`**. Não inclua o token na URL.
+Em **Stacks → Add stack**, escolha:
 
-Em **Environment variables**, preencha:
+- **Web editor:** cole todo o conteúdo de `compose.portainer.yaml`; ou
+- **Repository:** use `https://github.com/mcdalbu/wazuh-security-reports`, autenticação de leitura para o repositório privado, referência `refs/heads/main` e **Compose path: `compose.portainer.yaml`**. Não inclua tokens na URL.
 
-| Variável | Valor |
-| --- | --- |
-| `REPORT_DOMAIN` | Domínio ou IP do portal, sem `https://` nem barra final |
-| `INDEXER_ENDPOINTS` | URL HTTPS com o IP e porta autorizados, por exemplo `https://192.0.2.10:9200` |
-| `RETENTION_HOURS` | Opcional, padrão `24` |
-| `APP_IMAGE` / `PROXY_IMAGE` | Opcionais; mantenha os padrões para as imagens importadas |
+Preencha `REPORT_DOMAIN`, `INDEXER_ENDPOINTS` e, opcionalmente, `RETENTION_HOURS` em **Environment variables**. Use o nome `reports` para a stack e implante após confirmar que as imagens existem no ambiente correto.
 
-Implante a stack após confirmar as imagens. Para atualizar uma stack existente, preserve o mesmo nome e os volumes; altere o Compose path, carregue o arquivo atualizado e desative a opção de baixar novamente as imagens quando elas forem locais.
-
-Os limites usam `deploy.resources.limits`, e `depends_on` usa lista para compatibilidade com o parser observado. A lista determina a ordem de início, sem esperar o healthcheck: o proxy pode responder temporariamente com 502 enquanto a aplicação inicia; tente novamente após alguns segundos.
-
-#### 3. Criar a conta do portal
-
-Abra **Containers → contêiner do serviço app → Console**, conecte com `/bin/sh` e execute:
+Para criar/redefinir uma conta, abra o Console do serviço `app` com `/bin/sh`:
 
 ```sh
 flask --app web.app:create_app user-set operador --customer HDBR --customer ARMAZEM_PB
 ```
 
-A senha será solicitada sem eco. Acesse então `https://<REPORT_DOMAIN>`.
+### Migrar uma implantação existente
 
-Se usar CA privada do indexador, o arquivo PEM descrito abaixo deve existir no host do Docker e ser montado com caminho absoluto. Acrescente `SSL_CERT_FILE` e o volume ao Compose da stack; arquivos da máquina com o navegador não ficam automaticamente disponíveis no servidor.
+Antes da troca, identifique o host que contém os volumes e faça backup dos dados. Compose e uma implantação antiga não podem publicar as mesmas portas simultaneamente; pare a implantação antiga de `reports` na janela de migração e inicie o projeto Compose no host correto. Preserve os volumes e confira seus nomes antes de montar os dados no novo projeto.
 
-Referências: [importar imagens no Portainer](https://docs.portainer.io/user/docker/images/import) e [configurar uma stack](https://docs.portainer.io/sts/user/docker/stacks/add).
+O projeto `reports` usa, por padrão, `reports_reports_data`, `reports_caddy_data` e `reports_caddy_config`. Nomes iguais em hosts diferentes não significam os mesmos dados. Se os volumes existentes tiverem nomes diferentes, declare-os como externos com seus nomes reais antes de iniciar. Não use `down -v` em uma atualização: isso remove volumes, incluindo contas, PDFs e a CA.
 
-### CA privada do indexador
+## HTTPS interno e confiança na CA
 
-O certificado do indexador deve incluir seu IP em Subject Alternative Name e encadear em uma CA confiável. Para uma CA privada, crie `secrets/indexer-ca.pem` contendo a cadeia PEM confiável (apenas certificados públicos, nunca a chave privada), e um arquivo `compose.ca.yaml`:
+Para um IP privado, Caddy gera automaticamente o certificado com sua CA interna. Não precisa de validação pública do Let's Encrypt. O `default_sni` permite selecionar o certificado quando o navegador acessa por IP sem SNI atrás do NAT do Docker.
+
+Após iniciar, exporte **somente o certificado público** da CA do seu servidor:
+
+```bash
+docker compose -p reports exec -T proxy cat /data/caddy/pki/authorities/local/root.crt > reports-root-ca.crt
+```
+
+No Portainer, o mesmo `cat` pode ser executado no Console do serviço `proxy`. Salve o bloco completo `BEGIN CERTIFICATE`/`END CERTIFICATE` e importe-o nas autoridades confiáveis do sistema/navegador de cada dispositivo autorizado. Não ignore o aviso de certificado para fazer login. Nunca distribua `root.key`.
+
+Preserve `caddy_data`: a CA continua válida ao trocar as portas ou recriar os contêineres. Recriar esse volume gera uma nova CA que precisa ser distribuída novamente. Para um nome DNS público, os desafios de emissão pública exigem DNS e roteamento externo apropriados para as portas de validação; a simples publicação de 8083/8443 não atende sozinha a esses desafios.
+
+## CA privada do indexador
+
+O certificado do indexador deve incluir seu IP em Subject Alternative Name e encadear em uma CA confiável. Para uma CA privada, salve os certificados públicos PEM em `secrets/indexer-ca.pem` (sem chave privada) e crie `compose.ca.yaml`:
 
 ```yaml
 services:
@@ -130,60 +105,41 @@ services:
 ```
 
 ```bash
-docker compose -f compose.yaml -f compose.ca.yaml up -d --build
+docker compose -p reports -f compose.yaml -f compose.ca.yaml up -d --build
 ```
 
-Mantenha esse override em uso nas operações seguintes. Não há opção web para desligar a validação TLS. Se houver proxy HTTP corporativo nas variáveis de ambiente do container, administre essa configuração como parte da infraestrutura de confiança.
+Use os mesmos arquivos nas operações seguintes. No Portainer, monte o PEM usando um caminho absoluto existente no host Docker. Não há opção web para desligar a validação TLS.
 
-## Contas e permissões
+## Contas, operação e dados
 
 ```bash
-# Criar ou redefinir senha e clientes permitidos (revoga as sessões antigas)
-docker compose exec app flask --app web.app:create_app user-set operador --customer HDBR
-# Acesso a todos os clientes somente quando autorizado explicitamente
-docker compose exec app flask --app web.app:create_app user-set administrador --all-customers
-# Desativar uma conta imediatamente
-docker compose exec app flask --app web.app:create_app user-disable operador
+# Redefinir senha/clientes autorizados e revogar sessões existentes
+docker compose -p reports exec app flask --app web.app:create_app user-set operador --customer HDBR
+# Autorizar todos os clientes explicitamente
+docker compose -p reports exec app flask --app web.app:create_app user-set administrador --all-customers
+# Desativar uma conta e revogar suas sessões
+docker compose -p reports exec app flask --app web.app:create_app user-disable operador
+# Logs e estado dos serviços
+docker compose -p reports logs --tail=100 app proxy
+docker compose -p reports ps
+# Limpeza de sessões e documentos expirados
+docker compose -p reports exec -T app flask --app web.app:create_app prune
 ```
 
-As contas com `--all-customers` continuam vendo apenas os PDFs que elas próprias geraram. Os demais usuários precisam ter cada valor exato de cliente autorizado. Não existe cadastro público ou recuperação de senha por e-mail. A recuperação é feita pelo administrador pelo comando `user-set`. As credenciais do portal são independentes das credenciais do indexador. Use uma conta de indexador com privilégio somente de leitura nos índices de alertas e, quando aplicável, restrições de documentos por cliente.
+Cada conta vê somente seus próprios PDFs, e os clientes autorizados são verificados na geração e no download. O filtro do indexador usa o valor exato de `agent.labels.customer`. As credenciais e o snapshot não são persistidos; PDFs e metadados ficam no volume privado. Use uma conta do indexador somente de leitura e, quando aplicável, restrições de documentos por cliente.
 
-## Proteções e operação
+Senhas usam Argon2id. As sessões são armazenadas pelo hash do token, expiram após 30 minutos de inatividade ou oito horas totais, e usam cookies Secure/HttpOnly/SameSite. Todos os POSTs exigem CSRF e origem correta. Há limites de tentativas de login e de geração. MFA/SSO não estão implementados.
 
-- Senhas com Argon2id (64 MiB, 3 iterações); nunca armazenadas em texto puro.
-- Token aleatório de sessão com 256 bits; apenas seu hash é persistido. Renovação ao entrar, revogação ao sair ou redefinir/desativar a conta.
-- Cookie `__Host-`, Secure, HttpOnly e SameSite=Lax; limite de inatividade de 30 minutos e duração máxima de 8 horas.
-- Token CSRF e verificação de origem em todos os POSTs, incluindo login e logout.
-- Cinco tentativas por conta e vinte por IP em 15 minutos; respostas de login genéricas. A limitação por IP assume um único proxy Caddy com sobrescrita dos cabeçalhos recebidos.
-- Autorização por cliente e propriedade dos documentos em cada download; nomes aleatórios, sem acesso público ao volume.
-- Política de conteúdo sem scripts externos, sem cache, proteção contra framing e HSTS.
-- Contêineres executam com UID 10001, raiz somente leitura, sem capabilities e sem escalada de privilégios; limites de memória, processos e corpo da requisição.
-- O contexto de build usa uma lista de arquivos permitidos: relatórios de clientes, histórico Git, pacotes, bancos e segredos não entram na imagem. A imagem contém o papel timbrado confidencial; mantenha repositórios e registries privados.
+Os PDFs deixam de estar disponíveis após a retenção. A remoção física ocorre durante o uso do portal ou via `prune`; agende esse comando no host se precisar de limpeza mesmo sem acessos. Proteja os backups dos três volumes. A imagem contém o papel timbrado, mas exclui credenciais, relatórios de clientes, Git e dados locais pelo `.dockerignore`.
 
-Os relatórios expiram para download após `RETENTION_HOURS` (padrão 24). A limpeza física ocorre ao abrir o portal, iniciar um login ou executar `prune`; configure uma execução periódica no host caso precise removê-los mesmo sem uso da aplicação:
+Uma geração é executada por vez. Mantenha um worker Gunicorn e uma instância do backend para respeitar a serialização de PDF e o armazenamento SQLite local. Uma segunda geração simultânea recebe mensagem para tentar novamente.
 
-```bash
-docker compose exec -T app flask --app web.app:create_app prune
-```
-
-Faça backup protegido do volume `reports_data` (contas, sessões e PDFs) e dos volumes Caddy (certificados/chaves). Criptografia de disco e proteção dos backups são responsabilidades da implantação. Não remova volumes durante atualizações. `docker compose down -v` apaga os dados.
-
-Uma geração ocorre por vez para evitar concorrência na biblioteca de PDF. Uma segunda solicitação recebe uma mensagem para tentar novamente. Cada conta pode solicitar até dez gerações em 15 minutos. O serviço usa um único worker Gunicorn com quatro threads: não aumente workers nem réplicas sem substituir o controle de concorrência e o armazenamento locais. A geração é síncrona, pode demorar até alguns minutos em 30 dias e não persiste credenciais para retomada em caso de reinício.
-
-O portal usa autenticação por senha; MFA/SSO não estão implementados. Para exposição pública com política corporativa de MFA, coloque um provedor de identidade com MFA na frente do Caddy ou integre OIDC antes de liberar o acesso.
-
-As medidas seguem orientações de [armazenamento de senhas](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [sessões](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) e [segurança do Flask](https://flask.palletsprojects.com/en/stable/web-security/). Não substituem uma revisão da infraestrutura.
-
-## Desenvolvimento e verificações
+## Verificar o código sem consultar o indexador
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-web.txt
 .venv/bin/python -m unittest discover -s tests -v
-mkdir -p data
-PUBLIC_ORIGIN=http://127.0.0.1:8000 ALLOW_LOCAL_HTTP=1 REPORT_DATA_DIR=./data \
-  INDEXER_ENDPOINTS=https://192.0.2.10:9200 \
-  .venv/bin/flask --app web.app:create_app run --host 127.0.0.1 --port 8000
 ```
 
-HTTP é aceito somente no modo explícito de desenvolvimento com origem loopback. Nunca use o servidor Flask de desenvolvimento em produção ou habilite debug com dados reais. Para criar contas localmente, exporte as mesmas variáveis e use `.venv/bin/flask --app web.app:create_app user-set ...`.
+Referências: [Docker Compose](https://docs.docker.com/compose/intro/compose-application-model/), [recursos dos serviços](https://docs.docker.com/reference/compose-file/services/), [importar imagens no Portainer](https://docs.portainer.io/user/docker/images/import) e [HTTPS automático do Caddy](https://caddyserver.com/docs/automatic-https).
