@@ -1,7 +1,7 @@
 # Portainer Standalone: import the images first, or set APP_IMAGE/PROXY_IMAGE to private registry references.
 services:
   app:
-    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.1}
+    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.2}
     restart: unless-stopped
     environment:
       PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
@@ -32,7 +32,7 @@ services:
       retries: 3
       start_period: 20s
   proxy:
-    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.1}
+    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.2}
     restart: unless-stopped
     environment:
       REPORT_DOMAIN: ${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}

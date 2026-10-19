@@ -16,6 +16,8 @@ docker compose up -d
 
 **Portainer:** use `compose.portainer.yaml` após importar as duas imagens ou construí-las no host. O script `./deploy/build_portainer_images.sh` prepara o pacote de importação. Veja o guia acima; o repositório deve continuar privado.
 
+Para acesso por IP na rede interna/VPN, configure `REPORT_DOMAIN` com o IP do portal e instale a CA interna do proxy nos dispositivos clientes, conforme o guia de implantação.
+
 Nenhuma conta ou senha padrão é criada. As credenciais do indexador são informadas por geração e não são persistidas.
 
 ## Instalar os pacotes

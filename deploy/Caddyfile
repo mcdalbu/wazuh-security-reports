@@ -1,23 +1,27 @@
 {
-    http_port 8080
-    https_port 8443
-    admin off
-    servers {
-        timeouts {
-            read_header 10s
-        }
-    }
+	http_port 8080
+	https_port 8443
+	admin off
+	# IP URLs usually omit SNI; select the configured certificate behind Docker NAT.
+	default_sni {$REPORT_DOMAIN}
+	# Client devices must trust the exported CA; the read-only proxy need not install it.
+	skip_install_trust
+	servers {
+		timeouts {
+			read_header 10s
+		}
+	}
 }
 {$REPORT_DOMAIN} {
-    request_body {
-        max_size 16KB
-    }
-    reverse_proxy app:8000 {
-        # Replace untrusted client proxy headers; only this proxy is trusted by the app.
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto https
-        transport http {
-            response_header_timeout 360s
-        }
-    }
+	request_body {
+		max_size 16KB
+	}
+	reverse_proxy app:8000 {
+		# Replace untrusted client proxy headers; only this proxy is trusted by the app.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		transport http {
+			response_header_timeout 360s
+		}
+	}
 }

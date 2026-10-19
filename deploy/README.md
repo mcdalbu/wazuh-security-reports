@@ -4,7 +4,7 @@ A versão web reutiliza o gerador de PDFs e o papel timbrado do aplicativo deskt
 
 ## Implantar
 
-Requer Docker Engine com Compose v2, um domínio com DNS apontando para o servidor, portas TCP 80/443 disponíveis e acesso de rede ao indexador. Use um servidor administrado e restrinja o acesso à rede de operação quando possível.
+Requer Docker Engine com Compose v2, portas TCP 80/443 disponíveis no servidor e acesso de rede ao indexador. Para HTTPS público, use um domínio com DNS apontando para o servidor; para rede interna/VPN, use um IP privado e a CA interna conforme a seção de acesso por IP. Use um servidor administrado e restrinja o acesso à rede de operação quando possível.
 
 ```bash
 cp deploy/env.example .env
@@ -27,20 +27,38 @@ Acesse `https://<REPORT_DOMAIN>`. Caddy emite e renova o certificado HTTPS autom
 
 Use **`compose.portainer.yaml`** no Portainer. Esse arquivo contém somente referências `image:`, sem `build:`, e preserva autenticação, HTTPS, limites de recursos e volumes. As imagens precisam existir no mesmo Docker Engine do ambiente selecionado antes de implantar.
 
+#### Acesso por IP na rede interna/VPN — 0.4.2
+
+Use as imagens `0.4.2` e configure `REPORT_DOMAIN` com o **IP do servidor Docker do portal**, sem protocolo ou porta (o nome histórico dessa variável também aceita IP). A aplicação usa `https://<IP>` como origem exata; abra o mesmo endereço no navegador. O IP do indexador continua separado em `INDEXER_ENDPOINTS`.
+
+Para IP privado, o Caddy gera automaticamente um certificado com sua CA interna; não precisa alcançar o Let's Encrypt nem abrir portas da rede interna para a Internet. O `default_sni` permite selecionar o certificado correto quando o navegador acessa por IP sem enviar SNI e o tráfego chega por NAT do Docker.
+
+O certificado da CA precisa ser confiável **em cada dispositivo/navegador que acessará o portal**. Após implantar, abra o Console do serviço `proxy` no Portainer com `/bin/sh` e execute:
+
+```sh
+cat /data/caddy/pki/authorities/local/root.crt
+```
+
+Salve o bloco completo de `-----BEGIN CERTIFICATE-----` até `-----END CERTIFICATE-----` como `reports-root-ca.crt` e importe-o nas autoridades certificadoras confiáveis do sistema/navegador. Confirme que o arquivo veio do seu próprio servidor. Exporte somente `root.crt`; nunca distribua `root.key`. Não ignore o aviso de certificado para fazer login. Reabra o navegador e acesse `https://<IP>` após instalar a CA.
+
+Preserve `caddy_data`: ele contém a CA, sua chave e os certificados. Se esse volume for recriado, será necessário distribuir a nova CA. A opção `skip_install_trust` evita tentar instalar a CA dentro do contêiner de raiz somente leitura; a confiança nos dispositivos clientes continua necessária.
+
+A versão mantém as correções de capabilities e temporários da `0.4.1`. Se usar `APP_IMAGE`/`PROXY_IMAGE`, atualize as tags para `0.4.2` ou remova as variáveis para aceitar os padrões atuais. Para nomes DNS públicos, permanece a emissão automática pública quando o DNS e as portas externas atendem aos requisitos.
+
 #### Atualização corretiva 0.4.1
 
 Esta versão remove a capability `cap_net_bind_service` do executável Caddy durante o build, pois o proxy já escuta internamente em 8080/8443. Isso corrige `exec /usr/bin/caddy: operation not permitted` em runtimes que removem as capabilities e não aplicam `no-new-privileges`.
 
 O `/tmp` agora é declarado como volume `type: tmpfs`, com modo `01777`, preservando a raiz somente leitura e permitindo escrita pelo UID 10001. O Gunicorn usa `/dev/shm` para seu arquivo de heartbeat. Isso evita o erro `Read-only file system: /tmp/wgunicorn-*` observado quando a montagem temporária anterior não foi aplicada pelo ambiente. A montagem `/tmp` é necessária também para a geração do PDF.
 
-Importe o pacote **0.4.1** e substitua o YAML completo da stack pelo `compose.portainer.yaml` atualizado. Se tiver definido `APP_IMAGE` ou `PROXY_IMAGE`, atualize também as tags dessas variáveis para `0.4.1`, ou remova-as para usar os novos padrões. Preserve o nome da stack, as variáveis de domínio/indexador e os volumes existentes. Não use `privileged`, não adicione capabilities e não desligue `read_only` para contornar os erros.
+Essas correções estão incluídas na versão atual **0.4.2**. Importe o pacote atual e substitua o YAML completo da stack pelo `compose.portainer.yaml` atualizado. Se tiver definido `APP_IMAGE` ou `PROXY_IMAGE`, atualize também as tags dessas variáveis para `0.4.2`, ou remova-as para usar os novos padrões. Preserve o nome da stack, as variáveis de domínio/indexador e os volumes existentes. Não use `privileged`, não adicione capabilities e não desligue `read_only` para contornar os erros.
 
 #### 1. Disponibilizar as imagens
 
 Você pode importar o arquivo Docker de imagens fornecido com a entrega em **Images → Import → Select file → Upload**. O pacote contém aplicação e proxy; após importar, confirme que ambas aparecem na lista:
 
-- `localhost/wazuh-security-reports-app:0.4.1`
-- `localhost/wazuh-security-reports-proxy:0.4.1`
+- `localhost/wazuh-security-reports-app:0.4.2`
+- `localhost/wazuh-security-reports-proxy:0.4.2`
 
 Use o pacote compatível com a arquitetura do servidor. O arquivo pré-construído `amd64` é para Linux x86-64. Não habilite **Re-pull image / Always pull images** para imagens importadas localmente: elas não foram publicadas no Docker Hub.
 
@@ -50,7 +68,7 @@ Para reconstruir em uma máquina com Docker, com o repositório privado já clon
 ./deploy/build_portainer_images.sh
 ```
 
-O script gera `output/containers/wazuh-security-reports-0.4.1-<arquitetura>.tar.gz` e seu checksum. Não envia nada para um registry. Se executar no próprio host do Portainer, as imagens também ficam prontas no Docker local, sem precisar importar o arquivo. Se executar em outra máquina, importe o arquivo no ambiente correto do Portainer. Pela CLI, use `docker load -i arquivo.tar.gz` (não `docker import`).
+O script gera `output/containers/wazuh-security-reports-0.4.2-<arquitetura>.tar.gz` e seu checksum. Não envia nada para um registry. Se executar no próprio host do Portainer, as imagens também ficam prontas no Docker local, sem precisar importar o arquivo. Se executar em outra máquina, importe o arquivo no ambiente correto do Portainer. Pela CLI, use `docker load -i arquivo.tar.gz` (não `docker import`).
 
 Como alternativa, publique as duas imagens em um **registry privado**, configure sua autenticação em **Registries** no Portainer e defina `APP_IMAGE` e `PROXY_IMAGE` com as referências completas. A imagem da aplicação contém o papel timbrado confidencial: não torne o registry público. Credenciais de registry são distintas da autenticação Git.
 
@@ -65,7 +83,7 @@ Em **Environment variables**, preencha:
 
 | Variável | Valor |
 | --- | --- |
-| `REPORT_DOMAIN` | Domínio real do portal, sem `https://` nem barra final |
+| `REPORT_DOMAIN` | Domínio ou IP do portal, sem `https://` nem barra final |
 | `INDEXER_ENDPOINTS` | URL HTTPS com o IP e porta autorizados, por exemplo `https://192.0.2.10:9200` |
 | `RETENTION_HOURS` | Opcional, padrão `24` |
 | `APP_IMAGE` / `PROXY_IMAGE` | Opcionais; mantenha os padrões para as imagens importadas |
