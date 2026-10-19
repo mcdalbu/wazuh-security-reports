@@ -21,6 +21,33 @@ Acesse `https://<REPORT_DOMAIN>`. Caddy emite e renova o certificado HTTPS autom
 
 `INDEXER_ENDPOINTS` contém a lista de URLs permitidas, por exemplo `https://192.0.2.10:9200`; aceita múltiplas separadas por vírgula. Use o IP real e a porta da sua instalação. A interface só consulta os destinos dessa lista, sem resolver nomes externos e sem seguir redirecionamentos. A porta da aplicação não é publicada: o único acesso externo passa pelo proxy HTTPS.
 
+### Portainer — Docker Standalone
+
+Na área **Stacks → Add stack**, selecione **Repository** e configure:
+
+- **Repository URL:** `https://github.com/mcdalbu/wazuh-security-reports`.
+- Habilite a autenticação do repositório privado usando uma credencial GitHub com acesso de leitura a esse repositório. Não inclua o token na URL.
+- **Repository reference:** `refs/heads/main`.
+- **Compose path:** `compose.yaml`.
+- Em **Environment variables**, preencha `REPORT_DOMAIN` (somente o domínio, sem `https://`), `INDEXER_ENDPOINTS` (URL HTTPS com o IP e a porta autorizados) e, opcionalmente, `RETENTION_HOURS` (padrão `24`).
+- Implante a stack. Os Dockerfiles da aplicação e do proxy estão no repositório; a construção requer acesso às imagens oficiais e aos repositórios de pacotes.
+
+O arquivo usa `deploy.resources.limits` para memória, CPU e processos, evitando os campos `mem_limit`, `cpus` e `pids_limit` no nível do serviço que alguns validadores do Portainer recusam. Use Docker Compose v2 atualizado no ambiente Standalone.
+
+Se a stack já existir, atualize a referência Git e use **Pull and redeploy** para carregar o Compose corrigido. Preserve os volumes existentes.
+
+Depois da implantação, abra **Containers → contêiner do serviço app → Console**, conecte com `/bin/sh` e execute:
+
+```sh
+flask --app web.app:create_app user-set operador --customer HDBR --customer ARMAZEM_PB
+```
+
+A senha será solicitada no console, sem eco. Acesse então `https://<REPORT_DOMAIN>`.
+
+O editor web da stack recebe somente o YAML; ele não fornece o código usado por `build: .`. Para usar **Web editor**, primeiro construa as duas imagens no mesmo Docker Engine, ou publique-as em um registry privado, e substitua cada `build` por seu `image` correspondente. Em ambientes via Portainer Agent que não suportem build, use também imagens previamente construídas. Não publique as imagens em registry público: elas contêm o papel timbrado confidencial.
+
+Se usar a CA privada descrita abaixo, o arquivo PEM deve existir no host do Docker e ser montado com caminho absoluto; o arquivo local da máquina com o navegador não fica disponível no servidor. Acrescente a variável `SSL_CERT_FILE` e o volume ao Compose usado pela stack.
+
 ### CA privada do indexador
 
 O certificado do indexador deve incluir seu IP em Subject Alternative Name e encadear em uma CA confiável. Para uma CA privada, crie `secrets/indexer-ca.pem` contendo a cadeia PEM confiável (apenas certificados públicos, nunca a chave privada), e um arquivo `compose.ca.yaml`:

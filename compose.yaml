@@ -15,9 +15,12 @@ services:
       - /tmp:rw,noexec,nosuid,size=128m,uid=10001,gid=10001,mode=1700
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 1g
-    cpus: 2
-    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+          pids: 128
     healthcheck:
       test: [CMD, python, -c, "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/healthz',headers={'Host':os.environ['PUBLIC_ORIGIN'].split('://')[1],'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=5)"]
       interval: 30s
@@ -43,8 +46,11 @@ services:
       - /tmp:rw,noexec,nosuid,size=16m,uid=10001,gid=10001
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 256m
-    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          pids: 128
     depends_on:
       app:
         condition: service_healthy
