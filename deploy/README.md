@@ -32,7 +32,7 @@ Na área **Stacks → Add stack**, selecione **Repository** e configure:
 - Em **Environment variables**, preencha `REPORT_DOMAIN` (somente o domínio, sem `https://`), `INDEXER_ENDPOINTS` (URL HTTPS com o IP e a porta autorizados) e, opcionalmente, `RETENTION_HOURS` (padrão `24`).
 - Implante a stack. Os Dockerfiles da aplicação e do proxy estão no repositório; a construção requer acesso às imagens oficiais e aos repositórios de pacotes.
 
-O arquivo usa `deploy.resources.limits` para memória, CPU e processos, evitando os campos `mem_limit`, `cpus` e `pids_limit` no nível do serviço que alguns validadores do Portainer recusam. Use Docker Compose v2 atualizado no ambiente Standalone.
+O arquivo usa `deploy.resources.limits` para memória, CPU e processos, evitando os campos `mem_limit`, `cpus` e `pids_limit` no nível do serviço que alguns validadores do Portainer recusam. Use Docker Compose v2 atualizado no ambiente Standalone. O `depends_on` usa o formato de lista para compatibilidade com validadores antigos. Esse formato determina a ordem de início, sem esperar o healthcheck: o proxy pode responder temporariamente com erro 502 enquanto a aplicação inicia; tente novamente após alguns segundos.
 
 Se a stack já existir, atualize a referência Git e use **Pull and redeploy** para carregar o Compose corrigido. Preserve os volumes existentes.
 

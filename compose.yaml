@@ -52,8 +52,7 @@ services:
           memory: 256M
           pids: 128
     depends_on:
-      app:
-        condition: service_healthy
+      - app
 volumes:
   reports_data:
   caddy_data:
