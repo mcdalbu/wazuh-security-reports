@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.2}
+    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.3}
     build: .
     restart: unless-stopped
     environment:
@@ -32,13 +32,14 @@ services:
       retries: 3
       start_period: 20s
   proxy:
-    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.2}
+    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.3}
     build:
       context: .
       dockerfile: deploy/Dockerfile.proxy
     restart: unless-stopped
     environment:
       REPORT_DOMAIN: ${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
+      REPORT_HTTPS_PORT: ${REPORT_HTTPS_PORT:-443}
     ports:
       - '80:8080'
       - '443:8443'

@@ -1,0 +1,66 @@
+# Private/VPN access: HTTP :8083 redirects to HTTPS :8443. Set REPORT_DOMAIN to the portal IP.
+# Portainer Standalone: import the images first, or set APP_IMAGE/PROXY_IMAGE to private registry references.
+services:
+  app:
+    image: ${APP_IMAGE:-localhost/wazuh-security-reports-app:0.4.3}
+    restart: unless-stopped
+    environment:
+      PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Informe o IP do portal}:8443
+      INDEXER_ENDPOINTS: ${INDEXER_ENDPOINTS:?Defina INDEXER_ENDPOINTS no .env}
+      TRUST_PROXY: '1'
+      RETENTION_HOURS: ${RETENTION_HOURS:-24}
+      # For a private CA, see deploy/README.md; do not disable TLS validation.
+    volumes:
+      - reports_data:/data
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 134217728
+          mode: 01777
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+          pids: 128
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/healthz',headers={'Host':os.environ['PUBLIC_ORIGIN'].split('://')[1],'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  proxy:
+    image: ${PROXY_IMAGE:-localhost/wazuh-security-reports-proxy:0.4.3}
+    restart: unless-stopped
+    environment:
+      REPORT_DOMAIN: ${REPORT_DOMAIN:?Defina REPORT_DOMAIN no .env}
+      REPORT_HTTPS_PORT: "8443"
+    ports:
+      - '8083:8080'
+      - '8443:8443'
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 16777216
+          mode: 01777
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          pids: 128
+    depends_on:
+      - app
+volumes:
+  reports_data:
+  caddy_data:
+  caddy_config:
