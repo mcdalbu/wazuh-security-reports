@@ -22,7 +22,8 @@ class WebTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.app = create_app({'TESTING': True, 'DATA_DIR': self.folder.name,
-                               'PUBLIC_ORIGIN': ORIGIN, 'INDEXER_ENDPOINTS': 'https://192.0.2.10:9200'})
+                               'PUBLIC_ORIGIN': ORIGIN, 'INDEXER_IP': '192.0.2.10', 'INDEXER_PORT': '9200',
+                               'INDEXER_USER': 'reader', 'INDEXER_PASSWORD': 'do-not-persist-this-secret'})
         self.client = self.app.test_client()
         self.db = self.app.extensions['report_database']
         with self.db() as db:
@@ -51,8 +52,7 @@ class WebTests(unittest.TestCase):
         return re.search(rb'name="csrf" value="([^"]+)"', page.data)[1].decode()
 
     def form(self):
-        return {'csrf': self.csrf(), 'customer': 'HDBR', 'hours': '24', 'ip': '192.0.2.10', 'port': '9200',
-                'indexer_user': 'reader', 'indexer_password': 'do-not-persist-this-secret'}
+        return {'csrf': self.csrf(), 'customer': 'HDBR', 'hours': '24'}
 
     def test_cookie_rotation_logout_headers_and_hashed_storage(self):
         self.token()
@@ -104,14 +104,13 @@ class WebTests(unittest.TestCase):
             form['customer'] = 'ARMAZEM_PB'
             self.assertEqual(self.post('/reports', form).status_code, 403)
             form['customer'] = 'HDBR'
-            form['ip'] = '169.254.169.254'
-            self.assertEqual(self.post('/reports', form).status_code, 400)
-            form['ip'] = '192.0.2.10'
             form['hours'] = '12'
             self.assertEqual(self.post('/reports', form).status_code, 400)
             fetch.assert_not_called()
             fetch.return_value = {'synthetic': True}
             render.side_effect = lambda snapshot, path: path.write_bytes(b'%PDF-1.4\nTEST')
+            # Submitted connection fields cannot override the trusted server configuration.
+            form.update(ip='169.254.169.254', port='80', indexer_user='attacker', indexer_password='forged-secret')
             for hours in (24, 168, 720):
                 form['hours'] = str(hours)
                 response = self.post('/reports', form)
@@ -122,6 +121,7 @@ class WebTests(unittest.TestCase):
             report_id = db.execute('SELECT id FROM reports LIMIT 1').fetchone()[0]
             dump = '\n'.join(db.iterdump())
         self.assertNotIn('do-not-persist-this-secret', dump)
+        self.assertNotIn('forged-secret', dump)
         download = self.get('/reports/'+report_id)
         self.assertEqual(download.status_code, 200)
         download.close()
@@ -130,6 +130,25 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.get('/reports/'+report_id, other).status_code, 404)
         self.assertNotIn(report_id.encode(), self.get('/', other).data)
         self.assertEqual(self.get('/reports/../../etc/passwd').status_code, 404)
+
+    def test_dashboard_only_requests_customer_and_period(self):
+        self.login()
+        page = self.get()
+        self.assertEqual(set(re.findall(rb'name="([^"]+)"', page.data)) - {b'viewport'}, {b'csrf', b'customer', b'hours'})
+        for value in (b'192.0.2.10', b'do-not-persist-this-secret', b'indexer_password', b'indexer_user'):
+            self.assertNotIn(value, page.data)
+
+    def test_server_indexer_settings_are_required_and_validated(self):
+        base = {'DATA_DIR': self.folder.name, 'PUBLIC_ORIGIN': ORIGIN,
+                'INDEXER_IP': '192.0.2.10', 'INDEXER_PORT': '9200',
+                'INDEXER_USER': 'reader', 'INDEXER_PASSWORD': 'test-server-only-secret'}
+        for override in ({'INDEXER_IP': ''}, {'INDEXER_IP': 'example.test'},
+                         {'INDEXER_PORT': '0'}, {'INDEXER_PORT': 'bad'},
+                         {'INDEXER_USER': ''}, {'INDEXER_USER': 'a:b'}, {'INDEXER_PASSWORD': ''}):
+            with self.subTest(override=override):
+                with self.assertRaises(ValueError) as error:
+                    create_app(base | override)
+                self.assertNotIn(base['INDEXER_PASSWORD'], str(error.exception))
 
     def test_expiry_retention_and_disabled_account(self):
         self.login()
@@ -148,10 +167,52 @@ class WebTests(unittest.TestCase):
         path = Path(self.folder.name)/'reports'/f'{report_id}.pdf'
         path.write_bytes(b'old')
         with self.db() as db:
-            db.execute('INSERT INTO reports VALUES (?,1,?,24,?)', (report_id, 'HDBR', time.time()-86401))
+            db.execute('INSERT INTO reports(id,user_id,customer,hours,created) VALUES (?,1,?,24,?)', (report_id, 'HDBR', time.time()-86401))
         result = self.app.test_cli_runner().invoke(args=['prune'])
         self.assertEqual(result.exit_code, 0)
         self.assertFalse(path.exists())
+
+    def test_ten_minute_absolute_deadline_cannot_be_renewed_by_activity(self):
+        started = time.time()
+        with patch('web.app.time.time', return_value=started):
+            response = self.login()
+        self.assertIn('Max-Age=600', response.headers['Set-Cookie'])
+        csrf = None
+        for elapsed in (1, 120, 300, 599):
+            with patch('web.app.time.time', return_value=started+elapsed):
+                response = self.get()
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(f'content="{600-elapsed};url=/login?expired=1"'.encode(), response.data)
+            self.assertNotIn('Set-Cookie', response.headers)
+            csrf = re.search(rb'name="csrf" value="([^"]+)"', response.data)[1].decode()
+            with self.db() as db:
+                self.assertEqual(db.execute('SELECT created FROM sessions WHERE user_id=1').fetchone()[0], started)
+        with patch('web.app.time.time', return_value=started+600):
+            for route in ('/', '/template', '/reports/'+'a'*32, '/account/password'):
+                response = self.get(route)
+                self.assertEqual(response.status_code, 302, route)
+                self.assertTrue(response.location.endswith('/login'))
+            self.assertEqual(self.post('/reports', {'csrf': csrf, 'customer': 'HDBR', 'hours': '24'}).status_code, 403)
+            result = self.app.test_cli_runner().invoke(args=['prune'])
+            self.assertEqual(result.exit_code, 0, result.output)
+        with self.db() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM sessions WHERE user_id=1').fetchone()[0], 0)
+
+    def test_admin_deadline_and_new_login_start_new_ten_minutes(self):
+        started = time.time()
+        with self.db() as db:
+            db.execute('UPDATE users SET is_admin=1,customers=? WHERE username="alice"', ('["*"]',))
+        with patch('web.app.time.time', return_value=started):
+            self.login()
+        with patch('web.app.time.time', return_value=started+599):
+            self.assertEqual(self.get('/admin/users').status_code, 200)
+        with patch('web.app.time.time', return_value=started+600):
+            self.assertEqual(self.get('/admin/users').status_code, 302)
+            self.assertEqual(self.login().status_code, 303)
+        with self.db() as db:
+            self.assertEqual(db.execute('SELECT created FROM sessions WHERE user_id=1 ORDER BY created DESC LIMIT 1').fetchone()[0], started+600)
+        with patch('web.app.time.time', return_value=started+601):
+            self.assertEqual(self.get('/admin/users').status_code, 200)
 
     def test_cli_reset_and_disable_revoke_sessions(self):
         self.login()

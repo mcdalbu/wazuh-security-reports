@@ -6,7 +6,10 @@ services:
     restart: unless-stopped
     environment:
       PUBLIC_ORIGIN: https://${REPORT_DOMAIN:?Configure o host da aplicacao no .env}:8443
-      INDEXER_ENDPOINTS: ${INDEXER_ENDPOINTS:?Defina INDEXER_ENDPOINTS no .env}
+      INDEXER_IP: ${INDEXER_IP:?Defina INDEXER_IP no .env}
+      INDEXER_PORT: ${INDEXER_PORT:-9200}
+      INDEXER_USER: ${INDEXER_USER:?Defina INDEXER_USER no .env}
+      INDEXER_PASSWORD: ${INDEXER_PASSWORD:?Defina INDEXER_PASSWORD no .env}
       TRUST_PROXY: '1'
       RETENTION_HOURS: ${RETENTION_HOURS:-24}
       # For a private CA, see deploy/README.md; do not disable TLS validation.

@@ -116,28 +116,14 @@ def query_body(customer: str, start: datetime, end: datetime, hours: int = 24) -
     }
 
 
-def fetch_summary(
-    customer: str,
-    base_url: str,
-    username: str,
-    password: str,
-    *,
-    hours: int = 24,
-    verify_tls: bool = False,
-    reject_redirects: bool = False,
-    now: datetime | None = None,
-) -> dict:
-    customer = validate_customer(customer)
+def search_alerts(base_url: str, username: str, password: str, body: dict, *,
+                  hours: int, verify_tls: bool, reject_redirects: bool) -> dict:
+    """Shared bounded, TLS-aware transport for independently scoped alert reports."""
     base_url = base_url.strip().rstrip("/")
-    if not base_url.startswith("https://"):
-        raise ValueError("Use uma URL HTTPS para o indexador.")
-    if not username.strip() or not password:
-        raise ValueError("Informe o usuário e a senha do indexador.")
+    if not base_url.startswith("https://") or not username.strip() or not password:
+        raise ValueError("Configure uma conexão HTTPS e credenciais válidas.")
     if hours not in PERIODS:
         raise ValueError("Escolha um período de 24 horas, 7 dias ou 30 dias.")
-    end = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    start = end - timedelta(hours=hours)
-    body = query_body(customer, start, end, hours)
     token = base64.b64encode(f"{username.strip()}:{password}".encode()).decode()
     request = urllib.request.Request(
         f"{base_url}/wazuh-alerts-*/_search",
@@ -171,6 +157,33 @@ def fetch_summary(
         raise RuntimeError("A consulta não terminou completamente; tente novamente.")
     if result.get("hits", {}).get("total", {}).get("relation") != "eq":
         raise RuntimeError("O indexador não confirmou uma contagem exata.")
+    return result
+
+
+def fetch_summary(
+    customer: str,
+    base_url: str,
+    username: str,
+    password: str,
+    *,
+    hours: int = 24,
+    verify_tls: bool = False,
+    reject_redirects: bool = False,
+    now: datetime | None = None,
+) -> dict:
+    customer = validate_customer(customer)
+    base_url = base_url.strip().rstrip("/")
+    if not base_url.startswith("https://"):
+        raise ValueError("Use uma URL HTTPS para o indexador.")
+    if not username.strip() or not password:
+        raise ValueError("Informe o usuário e a senha do indexador.")
+    if hours not in PERIODS:
+        raise ValueError("Escolha um período de 24 horas, 7 dias ou 30 dias.")
+    end = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    start = end - timedelta(hours=hours)
+    body = query_body(customer, start, end, hours)
+    result = search_alerts(base_url, username, password, body, hours=hours,
+                           verify_tls=verify_tls, reject_redirects=reject_redirects)
     return {"customer": customer, "start_utc": start.isoformat(), "end_utc": end.isoformat(),
             "hours": hours, "priority_scope": "high_critical",
             "extracted_at_utc": datetime.now(timezone.utc).isoformat(),

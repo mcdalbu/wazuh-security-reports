@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-co
 WORKDIR /app
 COPY requirements-web.txt ./
 RUN pip install --no-cache-dir -r requirements-web.txt
-COPY wazuh_report.py ./
+COPY wazuh_report.py vulnerability_report.py ./
 COPY assets/timbrado_confidencial.pdf ./assets/timbrado_confidencial.pdf
 COPY web ./web
 USER 10001:10001

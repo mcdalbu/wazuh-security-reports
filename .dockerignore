@@ -3,6 +3,7 @@
 !Dockerfile
 !requirements-web.txt
 !wazuh_report.py
+!vulnerability_report.py
 !assets/
 !assets/timbrado_confidencial.pdf
 !web/

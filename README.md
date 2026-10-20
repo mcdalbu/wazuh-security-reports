@@ -8,18 +8,38 @@ Portal com login individual, permissões por cliente, HTTPS e download privado d
 
 ```bash
 cp deploy/env.example .env
-# Preencha REPORT_DOMAIN (host da aplicação) e INDEXER_ENDPOINTS
-docker compose -p reports config --quiet
-docker compose -p reports build
-docker compose -p reports run --rm app flask --app web.app:create_app user-set operador --customer HDBR
-docker compose -p reports up -d
+# Configure REPORT_DOMAIN, INDEXER_IP, INDEXER_PORT, INDEXER_USER e INDEXER_PASSWORD
+chmod 600 .env
+./deploy/deploy_ubuntu.sh --install-docker
 ```
+
+Em Ubuntu, o script instala Docker/Compose quando solicitado, configura os endereços, cria a conta com senha interativa e inicia os serviços. Se Docker já estiver instalado, omita `--install-docker`. Para atualizar preservando contas, execute `./deploy/deploy_ubuntu.sh --skip-account`. Use `--help` para informar host, indexador e clientes por opções. Comandos manuais e detalhes estão no [guia de implantação](deploy/README.md).
 
 Abra `https://<REPORT_DOMAIN>:8443`. Nenhum IP é fixado no código ou nas imagens. Para rede interna/VPN, instale a CA do proxy nos dispositivos clientes, conforme o [guia de implantação](deploy/README.md).
 
 **Portainer:** selecione um ambiente **Docker Standalone** e use `compose.portainer.yaml` com as imagens privadas `0.4.3` já importadas. O script `./deploy/build_portainer_images.sh` prepara o pacote de importação. O repositório deve continuar privado.
 
-Não há usuário ou senha padrão. As credenciais do indexador são usadas apenas durante a geração. O guia também descreve migração com preservação dos volumes, criação de contas, certificados e comandos de manutenção.
+As sessões duram no máximo **10 minutos desde o login**, inclusive para administradores; a atividade não renova esse prazo. Não há usuário ou senha padrão. Na interface web, o usuário informa somente o cliente e o período. IP, porta, usuário e senha do indexador vêm do Docker Compose, pelas variáveis `INDEXER_IP`, `INDEXER_PORT`, `INDEXER_USER` e `INDEXER_PASSWORD`; podem ser definidos no `.env` privado do host. Essas credenciais não são enviadas ao navegador, incluídas nos relatórios ou gravadas no banco. O guia também descreve migração com preservação dos volumes, criação de contas, certificados e comandos de manutenção.
+
+Administradores têm acesso automático a todos os clientes e gerenciam contas pela seção **Usuários** do portal, incluindo promoção de outros administradores. Todas as contas novas e senhas redefinidas exigem troca no próximo acesso. Para criar o primeiro administrador na instalação, use `./deploy/deploy_ubuntu.sh --username secteam --admin`. Para promover uma conta existente, use `./deploy/manage_users.sh promote secteam` após atualizar a imagem.
+
+## Relatório dedicado de vulnerabilidades (web)
+
+O portal tem as opções **Segurança** e **Vulnerabilidades**, cada uma com geração, histórico e modelo próprios. Em Vulnerabilidades, o usuário escolhe somente cliente e período (24h, 7d ou 30d). A consulta combina `term agent.labels.customer`, `term rule.groups: vulnerability-detector` e o intervalo em `timestamp`; o filtro não é ampliado automaticamente se não houver eventos.
+
+O documento possui seis seções: visão executiva, evolução/severidade/estados, ativos/pacotes, CVEs/evidências, plano de tratamento e escopo/qualidade. Inclui gráficos, EPS dos eventos do módulo e estimativas de CVEs e agentes distintos. A severidade vem de `data.vulnerability.severity` e é apresentada como Baixo, Médio, Alto ou Crítico, com dados desconhecidos separados. Não usa o nível numérico da regra para classificar a vulnerabilidade.
+
+O relatório descreve **eventos no período**, não o inventário atual de vulnerabilidades abertas. Detecções e resoluções podem se repetir; a presença de CVE não comprova exploração. As listas de CVEs, agentes e pacotes são limitadas aos maiores volumes. Contas, clientes autorizados, TLS, isolamento de PDFs, retenção e limite de sessão de 10 minutos se aplicam aos dois relatórios.
+
+O [modelo PDF pronto](templates/Modelo_de_Relatorio_de_Vulnerabilidades_timbrado.pdf) também está disponível no repositório privado. O [guia de atualização Docker Compose](deploy/GUIA_ATUALIZACAO_DOCKER_COMPOSE.md) descreve backup, reconstrução da imagem e atualização preservando a CA e os volumes.
+
+O modelo editável fica em `modelo_relatorio_vulnerabilidades.md`. Para gerar o modelo PDF timbrado sem consultar o indexador:
+
+```bash
+python3 -c 'from vulnerability_report import render_vulnerability_template; render_vulnerability_template("output/pdf/Modelo_de_Relatorio_de_Vulnerabilidades_timbrado.pdf")'
+```
+
+Ao atualizar o servidor, inclua `vulnerability_report.py`, `wazuh_report.py`, a pasta `web/`, `Dockerfile` e `.dockerignore`, e reconstrua a imagem. O banco é migrado automaticamente; documentos anteriores permanecem classificados como relatórios de segurança. Consulte o guia em `deploy/README.md` e mantenha a configuração da CA existente.
 
 ## Instalar os pacotes
 
@@ -36,7 +56,7 @@ No Debian 13 ou Ubuntu, instale as dependências:
 sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-reportlab python3-pypdf fonts-dejavu-core
 ```
 
-As dependências GTK/PyGObject devem ser instaladas no Python do sistema. O projeto não grava credenciais. O PDF do papel timbrado fica em `assets/timbrado_confidencial.pdf`.
+As dependências GTK/PyGObject devem ser instaladas no Python do sistema. A aplicação GTK não grava credenciais. O PDF do papel timbrado fica em `assets/timbrado_confidencial.pdf`.
 
 ```bash
 ./run.sh

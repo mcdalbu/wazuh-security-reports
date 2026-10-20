@@ -1,0 +1,11 @@
+services:
+  app:
+    environment:
+      SSL_CERT_FILE: /run/certs/indexer-ca.pem
+    volumes:
+      - type: bind
+        source: ./secrets/indexer-ca.pem
+        target: /run/certs/indexer-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false

@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-heading admin-heading"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h1>Usuários e permissões</h1><p>Controle quem acessa o portal e quais clientes cada conta pode consultar.</p></div><a class="button" href="{{ url_for('admin_user_edit') }}">Criar usuário</a></div>
+{% if saved %}<p class="notice" role="status">Conta salva. Na criação ou redefinição de senha, a troca será obrigatória no próximo acesso.</p>{% endif %}
+<section class="card"><p>Administradores gerenciam outras contas, podem promover usuários e têm acesso a todos os clientes. Usuários comuns acessam os clientes autorizados, sem permissão de administração.</p><div class="table-scroll"><table><thead><tr><th>Usuário</th><th>Perfil</th><th>Estado</th><th>Clientes</th><th>Senha</th><th>Ação</th></tr></thead><tbody>
+{% for account in accounts %}<tr><td>{{ account.username }}{% if account.id == g.user.id %} <small>(você)</small>{% endif %}</td><td>{{ 'Administrador' if account.is_admin else 'Usuário comum' }}</td><td>{{ 'Ativo' if account.active else 'Desativado' }}</td><td>{{ 'Todos os clientes' if account.is_admin or account.customers == ['*'] else account.customers|join(', ') }}</td><td>{{ 'Troca obrigatória' if account.must_change_password else 'Sem troca pendente' }}</td><td><a href="{{ url_for('admin_user_edit', user_id=account.id) }}">Editar</a></td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}
